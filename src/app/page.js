@@ -4,34 +4,32 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../supabaseClient';
 import { 
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell 
+  PieChart, Pie, Cell, BarChart, Bar
 } from 'recharts';
-import { Trash2, LogOut, Plus, X, Filter, BarChart3, Calculator, Image as ImageIcon, Loader2, Clock, TrendingUp } from 'lucide-react';
+import { 
+  Trash2, LogOut, Plus, X, Filter, BarChart3, Calculator, 
+  Image as ImageIcon, Loader2, TrendingUp, BookOpen, Search, 
+  Calendar as CalIcon, LayoutDashboard, List, Award
+} from 'lucide-react';
 
 export default function TradingJournal() {
   const [hasMounted, setHasMounted] = useState(false);
   const [user, setUser] = useState(null);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [activeTab, setActiveTab] = useState('dashboard');
+  const [trades, setTrades] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [selectedImage, setSelectedImage] = useState(null);
   
-  // --- STATE ---
-  const [strategyFilter, setStrategyFilter] = useState('All');
-  const [trades, setTrades] = useState([]);
-  
-  // Risk Calculator State
   const [calc, setCalc] = useState({ balance: '10000', riskPct: '1', entry: '', stop: '' });
-  const [posSize, setPosSize] = useState(0);
-
-  // Main Form State (Now includes image_url)
   const [form, setForm] = useState({ 
     symbol: '', pnl: '', strategy: 'Trend', direction: 'BUY',
     entry_price: '', exit_price: '', risk_amount: '', rr_ratio: '0.00',
-    entry_time: '', exit_time: '', image_url: ''
+    image_url: '', notes: '', grade: 'A', trade_date: new Date().toISOString().split('T')[0]
   });
 
-  // --- AUTH & INIT ---
   useEffect(() => {
     setHasMounted(true);
     const getSession = async () => {
@@ -45,318 +43,229 @@ export default function TradingJournal() {
     return () => authListener.subscription.unsubscribe();
   }, []);
 
-  useEffect(() => {
-    if (user) fetchTrades();
-  }, [user]);
+  useEffect(() => { if (user) fetchTrades(); }, [user]);
 
-  // --- IMAGE UPLOAD LOGIC ---
+  const fetchTrades = async () => {
+    const { data } = await supabase.from('trades').select('*').order('trade_date', { ascending: true });
+    if (data) setTrades(data);
+  };
+
+  const stats = useMemo(() => {
+    const totalPnL = trades.reduce((acc, t) => acc + (Number(t.pnl) || 0), 0);
+    const winRate = trades.length > 0 ? ((trades.filter(t => t.pnl > 0).length / trades.length) * 100).toFixed(1) : 0;
+    const dayMap = { 'Mon': 0, 'Tue': 0, 'Wed': 0, 'Thu': 0, 'Fri': 0 };
+    trades.forEach(t => {
+      const day = new Date(t.trade_date).toLocaleDateString('en-US', { weekday: 'short' });
+      if (dayMap[day] !== undefined) dayMap[day] += Number(t.pnl);
+    });
+    const heatmapData = Object.keys(dayMap).map(day => ({ name: day, pnl: dayMap[day] }));
+    const stratStats = {};
+    trades.forEach(t => {
+      if (!stratStats[t.strategy]) stratStats[t.strategy] = { name: t.strategy, pnl: 0, count: 0, wins: 0 };
+      stratStats[t.strategy].pnl += Number(t.pnl);
+      stratStats[t.strategy].count += 1;
+      if (t.pnl > 0) stratStats[t.strategy].wins += 1;
+    });
+    return { 
+      totalPnL, 
+      winRate, 
+      heatmapData, 
+      leaderboard: Object.values(stratStats).sort((a, b) => b.pnl - a.pnl) 
+    };
+  }, [trades]);
+
+  const chartData = trades.map((t, i) => ({
+    name: t.trade_date,
+    pnl: trades.slice(0, i + 1).reduce((acc, curr) => acc + (Number(curr.pnl) || 0), 0)
+  }));
+
   const handleFileUpload = async (e) => {
     try {
       setUploading(true);
       const file = e.target.files[0];
       if (!file) return;
-
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${Math.random()}.${fileExt}`;
-      const filePath = `${user.id}/${fileName}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from('trade-screenshots')
-        .upload(filePath, file);
-
-      if (uploadError) throw uploadError;
-
-      const { data: { publicUrl } } = supabase.storage
-        .from('trade-screenshots')
-        .getPublicUrl(filePath);
-
+      const filePath = `${user.id}/${Math.random()}.${file.name.split('.').pop()}`;
+      await supabase.storage.from('trade-screenshots').upload(filePath, file);
+      const { data: { publicUrl } } = supabase.storage.from('trade-screenshots').getPublicUrl(filePath);
       setForm(prev => ({ ...prev, image_url: publicUrl }));
-    } catch (error) {
-      alert('Upload failed: ' + error.message);
     } finally {
       setUploading(false);
     }
   };
 
-  // --- CALCULATOR LOGIC ---
-  useEffect(() => {
-    const riskAmt = (parseFloat(calc.balance) * (parseFloat(calc.riskPct) / 100));
-    const distance = Math.abs(parseFloat(calc.entry) - parseFloat(calc.stop));
-    if (distance > 0) {
-      setPosSize((riskAmt / distance).toFixed(2));
-    }
-  }, [calc]);
-
-  // --- AUTO-CALCULATE R:R ---
-  useEffect(() => {
-    const pnlValue = parseFloat(form.pnl);
-    const riskValue = parseFloat(form.risk_amount);
-    if (!isNaN(pnlValue) && !isNaN(riskValue) && riskValue !== 0) {
-      setForm(prev => ({ ...prev, rr_ratio: (pnlValue / riskValue).toFixed(2) }));
-    }
-  }, [form.pnl, form.risk_amount]);
-
-  const fetchTrades = async () => {
-    const { data } = await supabase.from('trades').select('*').order('created_at', { ascending: true });
-    if (data) setTrades(data);
-  };
-
-  const existingStrategies = useMemo(() => {
-    const strats = trades.map(t => t.strategy).filter(Boolean);
-    return [...new Set(strats)];
-  }, [trades]);
-
-  const filteredTrades = useMemo(() => {
-    if (strategyFilter === 'All') return trades;
-    return trades.filter(t => t.strategy === strategyFilter);
-  }, [trades, strategyFilter]);
-
-  const uniqueFilterOptions = ['All', ...existingStrategies];
-
-  // --- ANALYTICS ---
-  const totalPnL = filteredTrades.reduce((acc, curr) => acc + (Number(curr.pnl) || 0), 0);
-  const winRate = filteredTrades.length > 0 ? ((filteredTrades.filter(t => t.pnl > 0).length / filteredTrades.length) * 100).toFixed(1) : 0;
-  
-  const chartData = filteredTrades.map((t, i) => ({
-    name: `T${i + 1}`,
-    pnl: filteredTrades.slice(0, i + 1).reduce((acc, curr) => acc + (Number(curr.pnl) || 0), 0)
-  }));
-
-  const strategyPieData = existingStrategies.map(strat => ({
-    name: strat,
-    value: trades.filter(t => t.strategy === strat).length
-  }));
-
-  const handleAddTrade = async (e) => {
-    e.preventDefault();
-    if (!form.symbol || !form.pnl) return alert("Enter Symbol and P&L");
-    const { error } = await supabase.from('trades').insert([{ 
-        ...form, 
-        symbol: form.symbol.toUpperCase(), 
-        pnl: parseFloat(form.pnl), 
-        risk_amount: parseFloat(form.risk_amount) || 0, 
-        rr_ratio: parseFloat(form.rr_ratio) || 0, 
-        user_id: user.id 
-    }]);
-    if (!error) {
-      setForm({ symbol: '', pnl: '', strategy: 'Trend', direction: 'BUY', entry_price: '', exit_price: '', risk_amount: '', rr_ratio: '0.00', entry_time: '', exit_time: '', image_url: '' });
-      setIsModalOpen(false);
-      fetchTrades();
+  const handleAddTrade = async () => {
+    const { error } = await supabase.from('trades').insert([{ ...form, user_id: user.id }]);
+    if (!error) { 
+      setIsModalOpen(false); 
+      setForm({ ...form, symbol: '', pnl: '', image_url: '', notes: '' });
+      fetchTrades(); 
     }
   };
 
   const deleteTrade = async (id) => {
-    const { error } = await supabase.from('trades').delete().eq('id', id);
-    if (!error) fetchTrades();
-  };
-
-  const applyCalcToForm = () => {
-    const riskAmt = (parseFloat(calc.balance) * (parseFloat(calc.riskPct) / 100)).toFixed(2);
-    setForm(prev => ({ ...prev, entry_price: calc.entry, risk_amount: riskAmt }));
+    if(confirm("Delete this entry?")) {
+      await supabase.from('trades').delete().eq('id', id);
+      fetchTrades();
+    }
   };
 
   if (!hasMounted) return null;
-  if (!user) {
-    return (
-      <div style={containerStyle}>
-        <div style={{...cardStyle, maxWidth: '400px', margin: '100px auto'}}>
-          <h2 className="text-center text-xl font-bold mb-4 text-white uppercase tracking-widest">TradeZella Pro</h2>
-          <div className="flex flex-col gap-3">
-            <input placeholder="Email" style={inputStyle} value={email} onChange={e => setEmail(e.target.value)} />
-            <input placeholder="Password" type="password" style={inputStyle} value={password} onChange={e => setPassword(e.target.value)} />
-            <button onClick={() => supabase.auth.signInWithPassword({email, password})} style={btnStyle}>Login</button>
-          </div>
-        </div>
+
+  if (!user) return (
+    <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4">
+      <div className="bg-slate-900 p-10 rounded-[40px] border border-slate-800 w-full max-w-md shadow-2xl text-center">
+        <h2 className="text-white font-black text-3xl uppercase tracking-tighter mb-8 italic">TRADESYLLA</h2>
+        <input placeholder="Email" className="w-full bg-slate-950 border border-slate-800 p-4 rounded-2xl text-white mb-3 outline-none focus:border-blue-500" value={email} onChange={e => setEmail(e.target.value)} />
+        <input placeholder="Password" type="password" className="w-full bg-slate-950 border border-slate-800 p-4 rounded-2xl text-white mb-8 outline-none focus:border-blue-500" value={password} onChange={e => setPassword(e.target.value)} />
+        <button onClick={() => supabase.auth.signInWithPassword({email, password})} className="w-full bg-blue-600 p-4 rounded-2xl font-black text-white hover:bg-blue-500 transition-all uppercase tracking-widest shadow-lg shadow-blue-900/20">Login</button>
       </div>
-    );
-  }
+    </div>
+  );
 
   return (
-    <main className="min-h-screen bg-gray-50 p-4 md:p-8 text-black relative"> 
-      <div className="max-w-7xl mx-auto">
+    <main className="min-h-screen bg-[#FDFDFD] text-slate-900">
+      {/* --- NAVIGATION --- */}
+      <nav className="bg-white/80 backdrop-blur-md border-b sticky top-0 z-30 px-8 py-5 flex justify-between items-center">
+        <div className="flex items-center gap-12">
+          <h1 className="font-black text-2xl tracking-tighter text-slate-900 italic">TRADESYLLA</h1>
+          <div className="hidden md:flex gap-2 bg-slate-100/50 p-1.5 rounded-2xl border">
+            <button onClick={() => setActiveTab('dashboard')} className={`px-5 py-2 rounded-xl text-[10px] font-black transition-all flex items-center gap-2 uppercase tracking-widest ${activeTab === 'dashboard' ? 'bg-white shadow-sm text-blue-600' : 'text-slate-400'}`}><LayoutDashboard size={14}/> Dashboard</button>
+            <button onClick={() => setActiveTab('log')} className={`px-5 py-2 rounded-xl text-[10px] font-black transition-all flex items-center gap-2 uppercase tracking-widest ${activeTab === 'log' ? 'bg-white shadow-sm text-blue-600' : 'text-slate-400'}`}><List size={14}/> Trade Log</button>
+            <button onClick={() => setActiveTab('calendar')} className={`px-5 py-2 rounded-xl text-[10px] font-black transition-all flex items-center gap-2 uppercase tracking-widest ${activeTab === 'calendar' ? 'bg-white shadow-sm text-blue-600' : 'text-slate-400'}`}><CalIcon size={14}/> Calendar</button>
+          </div>
+        </div>
+        <button onClick={() => supabase.auth.signOut()} className="text-slate-300 hover:text-red-500 transition-colors font-bold uppercase text-[10px] flex items-center gap-2 tracking-widest">Logout <LogOut size={16}/></button>
+      </nav>
+
+      <div className="max-w-7xl mx-auto p-8">
         
-        {/* --- HEADER --- */}
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
-            <div>
-                <h1 className="text-2xl font-black text-gray-900 tracking-tight uppercase">Dashboard</h1>
-                <p className="text-sm text-gray-500 font-medium">Performance Metrics</p>
-            </div>
-
-            <div className="flex items-center gap-3 bg-white p-2 rounded-xl shadow-sm border border-gray-100">
-              <Filter size={16} className="text-gray-400 ml-2" />
-              <select value={strategyFilter} onChange={(e) => setStrategyFilter(e.target.value)} className="bg-transparent text-xs font-bold uppercase outline-none cursor-pointer pr-4">
-                {uniqueFilterOptions.map(strat => <option key={strat} value={strat}>{strat} View</option>)}
-              </select>
-            </div>
-
-            <button onClick={() => supabase.auth.signOut()} className="flex items-center gap-2 text-gray-400 hover:text-red-500 font-bold text-sm transition-colors uppercase">
-                <LogOut size={16} /> Logout
-            </button>
-        </div>
-
-        {/* --- STATS GRID --- */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-            <h3 className="text-gray-400 text-[10px] font-bold uppercase tracking-widest">Net P&L</h3>
-            <p className={`text-3xl font-black mt-1 ${totalPnL >= 0 ? 'text-green-500' : 'text-red-500'}`}>{totalPnL >= 0 ? '+' : ''}${totalPnL.toFixed(2)}</p>
-          </div>
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 text-blue-600">
-            <h3 className="text-gray-400 text-[10px] font-bold uppercase tracking-widest">Win Rate</h3>
-            <p className="text-3xl font-black mt-1">{winRate}%</p>
-          </div>
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-            <h3 className="text-gray-400 text-[10px] font-bold uppercase tracking-widest">Trade Count</h3>
-            <p className="text-3xl font-black mt-1 text-gray-900">{filteredTrades.length}</p>
-          </div>
-        </div>
-
-        {/* --- CHARTS --- */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
-          <div className="lg:col-span-2 bg-white p-6 rounded-2xl border border-gray-100 h-80 shadow-sm">
-            <h3 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-4 flex items-center gap-2"><BarChart3 size={12}/> Equity Curve</h3>
-            <ResponsiveContainer width="100%" height="85%"><AreaChart data={chartData}><CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" /><XAxis dataKey="name" hide /><YAxis fontSize={10} tickLine={false} axisLine={false} /><Tooltip /><Area type="monotone" dataKey="pnl" stroke="#3b82f6" fill="#3b82f610" strokeWidth={3} /></AreaChart></ResponsiveContainer>
-          </div>
-          <div className="bg-white p-6 rounded-2xl border border-gray-100 h-80 flex flex-col items-center shadow-sm">
-            <h3 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-4">Strategy Mix</h3>
-            <div className="w-full h-full"><ResponsiveContainer><PieChart><Pie data={strategyPieData} innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">{strategyPieData.map((_, i) => <Cell key={i} fill={['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899'][i % 5]} cornerRadius={4} />)}</Pie><Tooltip /></PieChart></ResponsiveContainer></div>
-          </div>
-        </div>
-
-        {/* --- TRADES TABLE --- */}
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-24">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left">
-              <thead>
-                <tr className="text-[10px] uppercase font-bold text-gray-400 border-b bg-gray-50/50">
-                  <th className="px-6 py-4">Preview</th>
-                  <th className="px-6 py-4">Asset</th>
-                  <th className="px-6 py-4">Execution</th>
-                  <th className="px-6 py-4">Price/Time</th>
-                  <th className="px-6 py-4">Risk/RR</th>
-                  <th className="px-6 py-4">P&L</th>
-                  <th className="px-6 py-4"></th>
-                </tr>
-              </thead>
-              <tbody className="divide-y text-sm">
-                {filteredTrades.map((trade) => (
-                    <tr key={trade.id} className="hover:bg-blue-50/10 transition-colors group">
-                      <td className="px-6 py-4">
-                        {trade.image_url ? (
-                          <img src={trade.image_url} className="w-12 h-8 object-cover rounded shadow-sm hover:scale-150 transition-transform cursor-pointer" alt="Chart" />
-                        ) : (
-                          <div className="w-12 h-8 bg-gray-50 rounded flex items-center justify-center text-gray-200"><ImageIcon size={14}/></div>
-                        )}
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="font-black text-gray-900">{trade.symbol}</div>
-                        <div className="text-[9px] text-gray-400 font-bold uppercase">{new Date(trade.created_at).toLocaleDateString()}</div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${trade.direction === 'BUY' ? 'bg-blue-50 text-blue-600' : 'bg-orange-50 text-orange-600'}`}>{trade.direction}</span>
-                        <div className="text-[9px] text-gray-400 font-bold uppercase mt-1">{trade.strategy}</div>
-                      </td>
-                      <td className="px-6 py-4 text-gray-600">
-                        <div className="font-medium text-xs">${trade.entry_price} → ${trade.exit_price}</div>
-                        <div className="text-[9px] text-gray-400 font-bold uppercase">{trade.entry_time || '--'} - {trade.exit_time || '--'}</div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="font-bold text-red-400">-${trade.risk_amount}</div>
-                        <div className="text-blue-500 font-black text-xs italic">{trade.rr_ratio}R</div>
-                      </td>
-                      <td className={`px-6 py-4 font-black ${trade.pnl >= 0 ? 'text-green-500' : 'text-red-500'}`}>{trade.pnl >= 0 ? '+' : ''}${trade.pnl}</td>
-                      <td className="px-6 py-4 text-right"><button onClick={() => deleteTrade(trade.id)} className="text-gray-200 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all"><Trash2 size={16} /></button></td>
-                    </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        {/* --- FAB --- */}
-        <button onClick={() => setIsModalOpen(true)} className="fixed bottom-8 right-8 bg-blue-600 text-white w-14 h-14 rounded-full shadow-2xl flex items-center justify-center hover:bg-blue-700 z-40 transition-transform active:scale-90"><Plus size={28} /></button>
-
-        {/* --- MODAL --- */}
-        {isModalOpen && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-3xl w-full max-w-4xl shadow-2xl overflow-hidden max-h-[95vh] overflow-y-auto">
-              <div className="bg-gray-900 p-6 flex justify-between items-center text-white sticky top-0 z-10">
-                <h2 className="font-black text-sm uppercase flex items-center gap-2"><TrendingUp size={16}/> New Position</h2>
-                <button onClick={() => setIsModalOpen(false)}><X size={24}/></button>
+        {/* --- DASHBOARD VIEW --- */}
+        {activeTab === 'dashboard' && (
+          <div className="space-y-10 animate-in fade-in duration-500">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+              <div className="bg-slate-900 p-8 rounded-[32px] text-white shadow-2xl relative overflow-hidden">
+                <div className="absolute top-0 right-0 p-4 opacity-10"><TrendingUp size={60}/></div>
+                <p className="text-[10px] font-black uppercase opacity-40 tracking-widest">Total Net P&L</p>
+                <p className="text-4xl font-black mt-2 italic">${stats.totalPnL.toFixed(2)}</p>
               </div>
-              
-              <div className="p-8 grid grid-cols-1 md:grid-cols-12 gap-8">
-                {/* Left Side: Upload & Calc */}
-                <div className="md:col-span-5 space-y-6">
-                  {/* Image Upload */}
-                  <div>
-                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Screenshot</label>
-                    <div className="relative group">
-                      <input type="file" accept="image/*" onChange={handleFileUpload} className="hidden" id="chart-upload" />
-                      <label htmlFor="chart-upload" className="w-full h-40 border-2 border-dashed border-gray-200 rounded-2xl flex flex-col items-center justify-center cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-all overflow-hidden bg-gray-50">
-                        {uploading ? (
-                          <Loader2 className="animate-spin text-blue-600" />
-                        ) : form.image_url ? (
-                          <img src={form.image_url} className="w-full h-full object-cover" />
-                        ) : (
-                          <>
-                            <ImageIcon className="text-gray-300 mb-2" />
-                            <span className="text-[10px] font-bold text-gray-400 uppercase">Click to upload chart</span>
-                          </>
-                        )}
-                      </label>
-                    </div>
-                  </div>
+              <div className="bg-white p-8 rounded-[32px] border border-slate-100 shadow-sm">
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Win Rate</p>
+                <p className="text-4xl font-black text-blue-600 mt-2">{stats.winRate}%</p>
+              </div>
+              <div className="bg-white p-8 rounded-[32px] border border-slate-100 shadow-sm">
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Executed</p>
+                <p className="text-4xl font-black text-slate-900 mt-2">{trades.length}</p>
+              </div>
+              <div className="bg-white p-8 rounded-[32px] border border-slate-100 shadow-sm">
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Best Setup</p>
+                <p className="text-xl font-black text-slate-900 mt-4 uppercase tracking-tighter">{stats.leaderboard[0]?.name || 'N/A'}</p>
+              </div>
+            </div>
 
-                  {/* Calculator */}
-                  <div className="bg-blue-50/50 p-5 rounded-2xl border border-blue-100">
-                    <h3 className="text-[10px] font-black text-blue-600 uppercase mb-4 tracking-widest">Position Sizer</h3>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div><label className="text-[9px] font-bold text-gray-400 uppercase">Balance</label><input type="number" className="w-full bg-white border border-blue-100 p-2 rounded-lg font-bold text-xs" value={calc.balance} onChange={e => setCalc({...calc, balance: e.target.value})} /></div>
-                      <div><label className="text-[9px] font-bold text-gray-400 uppercase">Risk %</label><input type="number" className="w-full bg-white border border-blue-100 p-2 rounded-lg font-bold text-xs" value={calc.riskPct} onChange={e => setCalc({...calc, riskPct: e.target.value})} /></div>
-                      <div><label className="text-[9px] font-bold text-gray-400 uppercase">Entry</label><input type="number" className="w-full bg-white border border-blue-100 p-2 rounded-lg font-bold text-xs" value={calc.entry} onChange={e => setCalc({...calc, entry: e.target.value})} /></div>
-                      <div><label className="text-[9px] font-bold text-gray-400 uppercase">Stop</label><input type="number" className="w-full bg-white border border-blue-100 p-2 rounded-lg font-bold text-xs" value={calc.stop} onChange={e => setCalc({...calc, stop: e.target.value})} /></div>
-                    </div>
-                    <div className="mt-4 flex items-center justify-between border-t border-blue-100 pt-4">
-                      <p className="text-lg font-black text-blue-700">{posSize} <span className="text-[10px] uppercase">Units</span></p>
-                      <button onClick={applyCalcToForm} className="bg-blue-600 text-white text-[9px] font-black px-3 py-2 rounded-lg uppercase hover:bg-blue-700">Apply</button>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Right Side: Log Details */}
-                <div className="md:col-span-7 grid grid-cols-2 gap-4">
-                  <div className="col-span-1"><label className="text-[10px] font-black text-gray-400 uppercase">Symbol</label><input placeholder="BTCUSDT" className="w-full border-2 border-gray-100 p-3 rounded-xl font-bold text-black" value={form.symbol} onChange={e => setForm({...form, symbol: e.target.value})} /></div>
-                  <div className="col-span-1">
-                    <label className="text-[10px] font-black text-gray-400 uppercase">Strategy</label>
-                    <input placeholder="Setup Name..." className="w-full border-2 border-gray-100 p-3 rounded-xl font-bold text-black mb-2" value={form.strategy} onChange={e => setForm({...form, strategy: e.target.value})} />
-                    <div className="flex flex-wrap gap-1.5">{existingStrategies.map(strat => (<button key={strat} type="button" onClick={() => setForm({...form, strategy: strat})} className={`text-[8px] font-bold px-2 py-1 rounded-full border ${form.strategy === strat ? 'bg-blue-600 text-white border-blue-600' : 'bg-gray-50 text-gray-500'}`}>{strat}</button>))}</div>
-                  </div>
-                  <div><label className="text-[10px] font-black text-gray-400 uppercase">Side</label><select className="w-full border-2 border-gray-100 p-3 rounded-xl font-bold text-black" value={form.direction} onChange={e => setForm({...form, direction: e.target.value})}><option value="BUY">BUY</option><option value="SELL">SELL</option></select></div>
-                  <div><label className="text-[10px] font-black text-gray-400 uppercase">Net P&L ($)</label><input type="number" className="w-full border-2 border-gray-100 p-3 rounded-xl font-bold text-black" value={form.pnl} onChange={e => setForm({...form, pnl: e.target.value})} /></div>
-                  <div className="col-span-2 border-t border-gray-50 my-2"></div>
-                  <div><label className="text-[10px] font-black text-gray-400 uppercase">Entry Price</label><input type="number" step="any" className="w-full border-2 border-gray-100 p-3 rounded-xl font-bold text-black" value={form.entry_price} onChange={e => setForm({...form, entry_price: e.target.value})} /></div>
-                  <div><label className="text-[10px] font-black text-gray-400 uppercase">Exit Price</label><input type="number" step="any" className="w-full border-2 border-gray-100 p-3 rounded-xl font-bold text-black" value={form.exit_price} onChange={e => setForm({...form, exit_price: e.target.value})} /></div>
-                  <div><label className="text-[10px] font-black text-gray-400 uppercase">Risk ($)</label><input type="number" className="w-full border-2 border-gray-100 p-3 rounded-xl font-bold text-black" value={form.risk_amount} onChange={e => setForm({...form, risk_amount: e.target.value})} /></div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div><label className="text-[10px] font-black text-gray-400 uppercase italic">Entry Time</label><input type="time" className="w-full border-2 border-gray-100 p-3 rounded-xl font-bold text-black" value={form.entry_time} onChange={e => setForm({...form, entry_time: e.target.value})} /></div>
-                    <div><label className="text-[10px] font-black text-gray-400 uppercase italic">Exit Time</label><input type="time" className="w-full border-2 border-gray-100 p-3 rounded-xl font-bold text-black" value={form.exit_time} onChange={e => setForm({...form, exit_time: e.target.value})} /></div>
-                  </div>
-                  <div className="col-span-2 pt-6">
-                    <button onClick={handleAddTrade} className="w-full bg-blue-600 text-white p-4 rounded-2xl font-black uppercase tracking-widest shadow-lg hover:bg-blue-700 transition-all">Save Trade</button>
-                    <p className="text-center mt-3 text-[10px] font-bold text-gray-400 uppercase">Calculated R/R: <span className="text-blue-600">{form.rr_ratio}R</span></p>
-                  </div>
-                </div>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
+              <div className="bg-white p-10 rounded-[48px] border border-slate-100 shadow-sm h-[400px]">
+                <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-300 mb-8">Growth Curve</h3>
+                <ResponsiveContainer width="100%" height="80%"><AreaChart data={chartData}><CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" /><XAxis dataKey="name" hide /><YAxis fontSize={10} axisLine={false} tickLine={false} /><Tooltip /><Area type="monotone" dataKey="pnl" stroke="#2563eb" fill="#3b82f608" strokeWidth={4} /></AreaChart></ResponsiveContainer>
+              </div>
+              <div className="bg-white p-10 rounded-[48px] border border-slate-100 shadow-sm h-[400px]">
+                <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-300 mb-8">Profit Heatmap (Days)</h3>
+                <ResponsiveContainer width="100%" height="80%"><BarChart data={stats.heatmapData}><XAxis dataKey="name" axisLine={false} tickLine={false} fontSize={12} fontWeight="900" /><Tooltip cursor={{fill: 'transparent'}} /><Bar dataKey="pnl" radius={[10, 10, 0, 0]}>{stats.heatmapData.map((entry, i) => <Cell key={i} fill={entry.pnl >= 0 ? '#10b981' : '#f43f5e'} />)}</Bar></BarChart></ResponsiveContainer>
               </div>
             </div>
           </div>
         )}
+
+        {/* --- TRADE LOG VIEW --- */}
+        {activeTab === 'log' && (
+           <div className="space-y-4 animate-in slide-in-from-bottom-4">
+             {[...trades].reverse().map(trade => (
+               <div key={trade.id} className="bg-white p-6 rounded-[32px] border border-slate-100 flex items-center gap-8 group hover:border-blue-200 transition-all shadow-sm">
+                 <div onClick={() => setSelectedImage(trade.image_url)} className="w-32 h-20 rounded-2xl bg-slate-50 overflow-hidden shrink-0 cursor-zoom-in border border-slate-100 relative group">
+                   {trade.image_url ? <img src={trade.image_url} className="w-full h-full object-cover"/> : <div className="w-full h-full flex items-center justify-center text-slate-200"><ImageIcon size={24}/></div>}
+                   <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity"><Search className="text-white" size={20}/></div>
+                 </div>
+                 <div className="flex-1 grid grid-cols-4 gap-4">
+                   <div><p className="text-[9px] font-black text-slate-300 uppercase">Symbol</p><p className="font-black text-lg">{trade.symbol}</p></div>
+                   <div><p className="text-[9px] font-black text-slate-300 uppercase">Setup</p><p className="font-bold text-sm text-slate-500">{trade.strategy}</p></div>
+                   <div><p className="text-[9px] font-black text-slate-300 uppercase">Grade</p><span className="bg-slate-100 px-2 py-1 rounded text-[10px] font-black">{trade.grade}</span></div>
+                   <div className="text-right flex flex-col items-end">
+                     <p className="text-[9px] font-black text-slate-300 uppercase">P&L</p>
+                     <p className={`font-black text-lg ${trade.pnl >= 0 ? 'text-green-500' : 'text-red-500'}`}>${trade.pnl}</p>
+                     <button onClick={() => deleteTrade(trade.id)} className="text-slate-200 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all mt-1"><Trash2 size={14}/></button>
+                   </div>
+                 </div>
+               </div>
+             ))}
+           </div>
+        )}
+
+        {/* --- CALENDAR VIEW --- */}
+        {activeTab === 'calendar' && (
+           <div className="bg-white p-10 rounded-[48px] border border-slate-100 shadow-sm animate-in zoom-in-95">
+             <div className="grid grid-cols-7 gap-4">
+                {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d => <div key={d} className="text-center text-[10px] font-black text-slate-300 uppercase mb-4 tracking-widest">{d}</div>)}
+                {Array.from({length: 31}).map((_, i) => {
+                  const dayPnL = trades.filter(t => new Date(t.trade_date).getDate() === (i + 1)).reduce((acc, t) => acc + Number(t.pnl), 0);
+                  return (
+                    <div key={i} className={`h-28 rounded-3xl border-2 flex flex-col p-4 transition-all ${dayPnL > 0 ? 'bg-green-50/50 border-green-100' : dayPnL < 0 ? 'bg-rose-50/50 border-rose-100' : 'bg-slate-50/30 border-slate-100'}`}>
+                      <span className="text-xs font-black text-slate-400">{i + 1}</span>
+                      {dayPnL !== 0 && <span className={`mt-auto text-xs font-black italic ${dayPnL > 0 ? 'text-green-600' : 'text-rose-600'}`}>${dayPnL.toFixed(0)}</span>}
+                    </div>
+                  );
+                })}
+             </div>
+           </div>
+        )}
       </div>
+
+      {/* --- ADD BUTTON --- */}
+      <button onClick={() => setIsModalOpen(true)} className="fixed bottom-10 right-10 bg-slate-900 text-white w-16 h-16 rounded-full shadow-2xl flex items-center justify-center z-40 hover:scale-110 active:scale-95 transition-all"><Plus size={32}/></button>
+
+      {/* --- MODAL --- */}
+      {isModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xl z-50 flex items-center justify-center p-6">
+          <div className="bg-white rounded-[56px] w-full max-w-5xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col border border-white">
+            <div className="p-8 border-b flex justify-between items-center">
+              <h2 className="text-lg font-black uppercase italic tracking-tighter text-slate-900">NEW JOURNAL ENTRY</h2>
+              <button onClick={() => setIsModalOpen(false)} className="bg-slate-100 p-2 rounded-full text-slate-400 hover:text-black transition-colors"><X size={24}/></button>
+            </div>
+            <div className="p-10 overflow-y-auto grid grid-cols-1 md:grid-cols-12 gap-12">
+              <div className="md:col-span-4 space-y-8">
+                <div className="h-56 bg-slate-50 rounded-[40px] border-2 border-dashed border-slate-200 hover:border-blue-400 transition-all flex flex-col items-center justify-center relative overflow-hidden">
+                  <input type="file" onChange={handleFileUpload} className="hidden" id="modal-upload" />
+                  <label htmlFor="modal-upload" className="absolute inset-0 cursor-pointer flex flex-col items-center justify-center">
+                    {uploading ? <Loader2 className="animate-spin text-blue-500"/> : form.image_url ? <img src={form.image_url} className="w-full h-full object-cover" /> : <><ImageIcon className="text-slate-300 mb-3" size={32}/><span className="text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Attach Chart</span></>}
+                  </label>
+                </div>
+                <div className="bg-slate-900 p-8 rounded-[40px] text-white">
+                    <p className="text-[10px] font-black uppercase opacity-40 mb-4 tracking-widest flex gap-2"><Calculator size={12}/> Calculator</p>
+                    <div className="grid grid-cols-2 gap-4 mb-4">
+                        <input placeholder="Entry" className="bg-slate-800 p-3 rounded-2xl text-xs font-bold border-none" value={calc.entry} onChange={e => setCalc({...calc, entry: e.target.value})}/>
+                        <input placeholder="Stop" className="bg-slate-800 p-3 rounded-2xl text-xs font-bold border-none" value={calc.stop} onChange={e => setCalc({...calc, stop: e.target.value})}/>
+                    </div>
+                    <button onClick={() => setForm({...form, entry_price: calc.entry})} className="w-full bg-blue-600 p-3 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-500 transition-all">Apply Price</button>
+                </div>
+              </div>
+              <div className="md:col-span-8 grid grid-cols-2 gap-8">
+                <div className="col-span-1"><label className="text-[10px] font-black text-slate-300 uppercase tracking-widest mb-1 block">Ticker</label><input className="w-full border-b-2 p-3 font-black text-2xl outline-none italic uppercase" placeholder="EURUSD" value={form.symbol} onChange={e => setForm({...form, symbol: e.target.value})}/></div>
+                <div className="col-span-1"><label className="text-[10px] font-black text-slate-300 uppercase tracking-widest mb-1 block">Date</label><input type="date" className="w-full border-b-2 p-3 font-black outline-none" value={form.trade_date} onChange={e => setForm({...form, trade_date: e.target.value})}/></div>
+                <div className="col-span-1"><label className="text-[10px] font-black text-slate-300 uppercase tracking-widest mb-1 block">Net Profit ($)</label><input type="number" className="w-full border-b-2 p-3 font-black text-2xl outline-none text-blue-600 italic" placeholder="0.00" value={form.pnl} onChange={e => setForm({...form, pnl: e.target.value})}/></div>
+                <div className="col-span-1"><label className="text-[10px] font-black text-slate-300 uppercase tracking-widest mb-1 block">Setup Name</label><input className="w-full border-b-2 p-3 font-black text-2xl outline-none italic" placeholder="Breakout" value={form.strategy} onChange={e => setForm({...form, strategy: e.target.value})}/></div>
+                <div className="col-span-2"><label className="text-[10px] font-black text-slate-300 uppercase tracking-widest mb-1 block">Journal Notes</label><textarea className="w-full border-2 border-slate-100 p-4 rounded-3xl text-sm mt-2 outline-none h-24" placeholder="How did you feel? Why did you enter?" value={form.notes} onChange={e => setForm({...form, notes: e.target.value})}></textarea></div>
+                <div className="col-span-2 pt-4"><button onClick={handleAddTrade} className="w-full bg-slate-900 text-white p-6 rounded-[32px] font-black uppercase tracking-[0.3em] text-xs hover:bg-black transition-all shadow-2xl">Finalize Log</button></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- LIGHTBOX --- */}
+      {selectedImage && (
+        <div className="fixed inset-0 bg-slate-950/98 z-[100] p-12 flex items-center justify-center" onClick={() => setSelectedImage(null)}>
+          <img src={selectedImage} className="max-w-full max-h-full object-contain rounded-3xl shadow-2xl" />
+          <button className="absolute top-10 right-10 text-white hover:rotate-90 transition-transform"><X size={48}/></button>
+        </div>
+      )}
     </main>
   );
 }
-
-// --- AUTH STYLES ---
-const containerStyle = { padding: '40px', backgroundColor: '#0f172a', minHeight: '100vh' };
-const cardStyle = { background: '#1e293b', padding: '24px', borderRadius: '12px', border: '1px solid #334155' };
-const inputStyle = { padding: '10px', borderRadius: '6px', background: '#0f172a', border: '1px solid #334155', color: 'white', marginBottom: '10px', width: '100%' };
-const btnStyle = { padding: '12px', background: '#38bdf8', color: '#0f172a', fontWeight: 'bold', borderRadius: '8px', width: '100%', cursor: 'pointer' };
