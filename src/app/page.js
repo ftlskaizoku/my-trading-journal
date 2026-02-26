@@ -3,426 +3,707 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../supabaseClient';
 import { 
-  AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, BarChart, Bar, Cell, PieChart, Pie, CartesianGrid
+  AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, 
+  CartesianGrid, PieChart, Pie, Cell, BarChart, Bar
 } from 'recharts';
 import { 
-  Plus, X, LayoutDashboard, List, Target, Activity, ChevronLeft, 
-  PlayCircle, ShieldCheck, Menu, CheckCircle2, AlertCircle, Terminal, 
-  Trash2, Filter, ArrowUpRight, ArrowDownRight, Brain, Camera, Clock, Zap, Cpu, History,
-  Settings, Globe, Monitor, LogOut, User, Bell, Lock, Palette, Search, Calendar
-} from 'lucide-react';
+    Plus, X, Zap, Brain, Terminal, 
+    Fingerprint, Key, Server, Activity, Target, Sparkles,
+    ShieldCheck, History, TrendingUp, Calendar, 
+    Globe, Lock, ArrowUpRight, Clock, Search, Filter,
+    Image as ImageIcon, ChevronRight, BarChart3, AlertCircle,
+    Cpu, Palette // <--- Add Cpu and Palette here
+  } from 'lucide-react';
 
 export default function TradingJournal() {
-  const [hasMounted, setHasMounted] = useState(false);
-  const [user, setUser] = useState(null);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-  const [activeTab, setActiveTab] = useState('dashboard');
-  const [trades, setTrades] = useState([]);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [isMobile, setIsMobile] = useState(false);
-  
-  // Filtering States
-  const [filterStrategy, setFilterStrategy] = useState('All');
-  const [filterAsset, setFilterAsset] = useState('All');
-  
-  // Settings States
-  const [language, setLanguage] = useState('English');
-  const [theme, setTheme] = useState('Dark');
-  const [aspectRatio, setAspectRatio] = useState('Full');
+    const [hasMounted, setHasMounted] = useState(false);
+    const [activeTab, setActiveTab] = useState('dashboard');
+    const [activeSettingsSubTab, setActiveSettingsSubTab] = useState('appearance');
+    const [trades, setTrades] = useState([]);
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    
+    // THEME & UI STATE
+    const [accentColor, setAccentColor] = useState('Purple'); 
+    const [glassMode, setGlassMode] = useState(true);
+    const [borderRadius, setBorderRadius] = useState('40px');
+    
+    // FILTERS
+    const [filterAsset, setFilterAsset] = useState('ALL');
+    const [filterStrategy, setFilterStrategy] = useState('ALL');
+    const [filterTimeframe, setFilterTimeframe] = useState('ALL');
 
-  // Playbook & AI States
-  const [playbookRules, setPlaybookRules] = useState(['VWAP Support', 'RSI Divergence', 'Volume Confirmation']);
-  const [newRuleInput, setNewRuleInput] = useState('');
-  const [aiStrategyDesc, setAiStrategyDesc] = useState('');
-  const [btResults, setBtResults] = useState([]);
-
-  // Form State
+    // SYNC & FORM STATE
+  const [syncMode, setSyncMode] = useState('manual'); // 'manual' or 'auto'
+  const [mt5Form, setMt5Form] = useState({ login: '', password: '', server: '', apiKey: '' });
   const [form, setForm] = useState({ 
-    symbol: '', pnl: '', strategy: 'Trend', direction: 'BUY', 
-    mindset: 'Neutral', mistake: 'None', exit_quality: 'Good',
-    notes: '', trade_date: new Date().toISOString().split('T')[0] 
+    symbol: '', pnl: '', strategy: 'VWAP Rejection', direction: 'BUY',
+    risk_reward: '1:2', mindset: 'Neutral', exit_quality: 'Good', notes: '', 
+    trade_date: new Date().toISOString().split('T')[0],
+    screenshot_url: ''
   });
-  const [selectedRules, setSelectedRules] = useState([]);
 
-  useEffect(() => {
-    setHasMounted(true);
-    const checkMobile = () => setIsMobile(window.innerWidth < 768);
-    checkMobile();
-    window.addEventListener('resize', checkMobile);
-    supabase.auth.getSession().then(({ data: { session } }) => setUser(session?.user ?? null));
-    return () => window.removeEventListener('resize', checkMobile);
+  const accs = { 
+    Purple: '#a855f7', Blue: '#3b82f6', Emerald: '#10b981', 
+    Rose: '#f43f5e', Amber: '#f59e0b', Indigo: '#6366f1',
+    Orange: '#f97316', Cyan: '#06b6d4'
+  };
+
+  const theme = {
+    bg: '#07090D',
+    card: glassMode ? 'rgba(15, 20, 28, 0.8)' : '#0F1219',
+    text: '#cbd5e1',
+    border: 'rgba(255,255,255,0.06)',
+    primary: accs[accentColor]
+  };
+
+  useEffect(() => { 
+    setHasMounted(true); 
+    fetchTrades(); 
   }, []);
 
-  useEffect(() => { if (user) fetchTrades(); }, [user]);
-
   const fetchTrades = async () => {
-    const { data, error } = await supabase.from('trades').select('*').order('trade_date', { ascending: false });
-    if (error) console.error("Error fetching:", error);
+    const { data, error } = await supabase.from('trades').select('*').order('trade_date', { ascending: true });
     if (data) setTrades(data);
+    if (error) console.error("Supabase Fetch Error:", error);
   };
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-    window.location.reload();
-  };
-
-  // --- LOGIC ORDER FIXED: Define filteredTrades FIRST ---
+  // FILTERED DATA LOGIC
   const filteredTrades = useMemo(() => {
     return trades.filter(t => {
-      const matchStrat = filterStrategy === 'All' || t.strategy === filterStrategy;
-      const matchAsset = filterAsset === 'All' || t.symbol === filterAsset;
-      return matchStrat && matchAsset;
+      const assetMatch = filterAsset === 'ALL' || t.symbol === filterAsset;
+      const strategyMatch = filterStrategy === 'ALL' || t.strategy === filterStrategy;
+      return assetMatch && strategyMatch;
     });
-  }, [trades, filterStrategy, filterAsset]);
+  }, [trades, filterAsset, filterStrategy]);
 
-  // --- Define Stats and Behavioral Analytics AFTER filteredTrades ---
-  const behavioralStats = useMemo(() => {
-    const mistakes = {};
-    let holdEarly = 0;
-    filteredTrades.forEach(t => {
-      if (t.mistake && t.mistake !== 'None') mistakes[t.mistake] = (mistakes[t.mistake] || 0) + 1;
-      if (t.exit_quality === 'Early') holdEarly++;
-    });
-    return { 
-        mistakeData: Object.entries(mistakes).map(([name, value]) => ({ name, value })),
-        holdEfficiency: filteredTrades.length ? Math.round(((filteredTrades.length - holdEarly) / filteredTrades.length) * 100) : 100
+  // ADVANCED ANALYTICS ENGINE (AI LOGIC)
+  const stats = useMemo(() => {
+    if (!filteredTrades.length) return { totalPnL: 0, winRate: 0, pf: '0.00', avgWin: 0, expectancy: 0 };
+    const wins = filteredTrades.filter(tr => Number(tr.pnl) > 0);
+    const losses = filteredTrades.filter(tr => Number(tr.pnl) < 0);
+    const totalPnL = filteredTrades.reduce((acc, tr) => acc + Number(tr.pnl), 0);
+    const grossProfit = wins.reduce((acc, tr) => acc + Number(tr.pnl), 0);
+    const grossLoss = Math.abs(losses.reduce((acc, tr) => acc + Number(tr.pnl), 0));
+    
+    return {
+        totalPnL: totalPnL.toFixed(2), 
+      winRate: ((wins.length / filteredTrades.length) * 100).toFixed(1), 
+      pf: grossLoss === 0 ? grossProfit.toFixed(2) : (grossProfit / grossLoss).toFixed(2),
+      avgWin: (totalPnL / filteredTrades.length).toFixed(2),
+      expectancy: (totalPnL / filteredTrades.length / 100).toFixed(2), // R-unit simulation
+      winCount: wins.length,
+      lossCount: losses.length,
+      beCount: filteredTrades.filter(tr => Number(tr.pnl) === 0).length
     };
   }, [filteredTrades]);
 
-  const stats = useMemo(() => {
-    if (!filteredTrades.length) return { totalPnL: 0, winRate: 0, syllaScore: 0, pf: '0.00' };
-    const wins = filteredTrades.filter(t => Number(t.pnl) > 0);
-    const totalPnL = filteredTrades.reduce((acc, t) => acc + (Number(t.pnl) || 0), 0);
-    const winRate = ((wins.length / filteredTrades.length) * 100).toFixed(1);
-    
-    // Simple PF calculation: Total Gains / Absolute Total Losses
-    const gains = wins.reduce((acc, t) => acc + Number(t.pnl), 0);
-    const losses = Math.abs(filteredTrades.filter(t => Number(t.pnl) < 0).reduce((acc, t) => acc + Number(t.pnl), 0));
-    const pf = losses === 0 ? gains.toFixed(2) : (gains / losses).toFixed(2);
+  // NEURAL SUGGESTIONS (AI EFFICIENCY)
+  const aiInsights = useMemo(() => {
+    if (filteredTrades.length < 5) return ["Insufficient data for neural mapping. Log more executions."];
+    const insights = [];
+    const bestStrategy = [...new Set(filteredTrades.map(t => t.strategy))]
+      .map(s => ({ name: s, pnl: filteredTrades.filter(t => t.strategy === s).reduce((a, b) => a + Number(b.pnl), 0) }))
+      .sort((a, b) => b.pnl - a.pnl)[0];
 
-    return { totalPnL, winRate, syllaScore: Math.round(winRate * 0.85), pf };
-  }, [filteredTrades]);
-
-  const runAiSimulation = () => {
-    if (!aiStrategyDesc) return alert("AI requires strategy explanation to train.");
-    const sim = Array.from({ length: 8 }, (_, i) => ({
-      id: i, res: Math.random() > 0.4 ? 'WIN' : 'LOSS', val: Math.floor(Math.random() * 800) - 200
-    }));
-    setBtResults(sim);
-  };
+      insights.push(`Maximum alpha detected in ${bestStrategy.name} setups.`);
+    if (stats.winRate > 60) insights.push("Current edge is highly consistent. Consider increasing size by 0.5%.");
+    if (stats.pf < 1.5) insights.push("Profit factor sub-optimal. Review exit quality on winning trades.");
+    return insights;
+  }, [filteredTrades, stats]);
 
   if (!hasMounted) return null;
 
   return (
-    <main className={`min-h-screen bg-[#07090D] text-slate-400 flex overflow-hidden font-sans ${aspectRatio === 'Compact' ? 'max-w-7xl mx-auto shadow-2xl border-x border-white/5' : ''}`}>
+    <main className="min-h-screen p-6 md:p-12 transition-all duration-700 font-sans selection:bg-purple-500/30" style={{ backgroundColor: theme.bg, color: theme.text }}>
       
-      {/* SIDEBAR */}
-      {!isMobile && (
-        <aside className={`fixed top-0 left-0 h-full bg-[#0F1219] border-r border-white/5 transition-all duration-300 z-[100] ${isSidebarOpen ? 'w-[240px]' : 'w-[70px]'}`}>
-           <div className="h-20 flex items-center justify-center border-b border-white/5 text-white">
-              <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="hover:bg-white/5 p-2 rounded-lg transition-colors">
-                {isSidebarOpen ? <ChevronLeft size={20}/> : <Menu size={20}/>}
-              </button>
+      {/* HEADER & NAV */}
+      <nav className="flex flex-col lg:flex-row justify-between items-center mb-12 gap-8">
+        <div className="flex items-center gap-6 group cursor-pointer">
+          <div style={{ backgroundColor: theme.primary }} className="w-16 h-16 rounded-[22px] flex items-center justify-center shadow-[0_0_50px_-10px] shadow-current group-hover:rotate-12 transition-all duration-500">
+            <Zap className="text-white fill-white" size={32} />
             </div>
-            <nav className="flex-1 px-3 space-y-2 mt-8">
-              <SidebarItem icon={<LayoutDashboard size={20}/>} label="Dashboard" active={activeTab === 'dashboard'} onClick={() => setActiveTab('dashboard')} isOpen={isSidebarOpen} />
-              <SidebarItem icon={<Brain size={20}/>} label="Sylla Edge" active={activeTab === 'edge'} onClick={() => setActiveTab('edge')} isOpen={isSidebarOpen} />
-              <SidebarItem icon={<ShieldCheck size={20}/>} label="Backtest" active={activeTab === 'backtest'} onClick={() => setActiveTab('backtest')} isOpen={isSidebarOpen} />
-              <SidebarItem icon={<PlayCircle size={20}/>} label="Playbook" active={activeTab === 'playbook'} onClick={() => setActiveTab('playbook')} isOpen={isSidebarOpen} />
-              <SidebarItem icon={<List size={20}/>} label="History" active={activeTab === 'log'} onClick={() => setActiveTab('log')} isOpen={isSidebarOpen} />
-              <SidebarItem icon={<Settings size={20}/>} label="Settings" active={activeTab === 'settings'} onClick={() => setActiveTab('settings')} isOpen={isSidebarOpen} />
-            </nav>
-        </aside>
+          <div className="flex flex-col">
+            <h1 className="text-5xl font-[950] italic uppercase tracking-tighter leading-[0.75] flex flex-col">
+              <span className="text-white">TRADE</span>
+              <span style={{ color: theme.primary }} className="drop-shadow-[0_0_15px_rgba(255,255,255,0.1)]">SYLLA</span>
+            </h1>
+            <p className="text-[9px] font-black opacity-30 tracking-[0.5em] uppercase mt-3 flex items-center gap-2">
+              <span className="w-8 h-[1px] bg-white/20" /> Neural Terminal v1.0
+            </p>
+          </div>
+        </div>
+
+        <div className="flex gap-2 p-1.5 bg-white/5 rounded-[28px] border border-white/5 backdrop-blur-2xl">
+          {['dashboard', 'edge', 'sync', 'settings'].map(tab => (
+            <button 
+              key={tab}
+              onClick={() => setActiveTab(tab)} 
+              className={`px-10 py-4 rounded-[22px] text-[11px] font-black uppercase tracking-widest transition-all ${
+                activeTab === tab ? 'bg-white text-black shadow-2xl scale-105' : 'opacity-30 hover:opacity-100 hover:bg-white/5'
+              }`}
+            >
+              {tab === 'dashboard' ? 'Terminal' : tab === 'edge' ? 'Playbook' : tab}
+            </button>
+          ))}
+        </div>
+
+        <button 
+          onClick={() => setIsModalOpen(true)}
+          style={{ backgroundColor: theme.primary }}
+          className="px-10 py-5 rounded-[22px] font-black text-[11px] text-white uppercase tracking-[0.25em] hover:scale-105 active:scale-95 transition-all hidden xl:block shadow-xl shadow-current/20"
+        >
+          New Execution +
+        </button>
+        </nav>
+
+      {/* DASHBOARD TAB */}
+      {activeTab === 'dashboard' && (
+        <div className="space-y-10 animate-in fade-in slide-in-from-bottom-5 duration-1000">
+          
+          {/* FILTERS BAR */}
+          <div className="flex flex-wrap gap-4 p-6 bg-white/[0.02] border border-white/5 rounded-[30px] items-center">
+            <div className="flex items-center gap-3 px-4 py-2 bg-white/5 rounded-xl border border-white/5">
+              <Filter size={14} className="opacity-40" />
+              <select 
+                className="bg-transparent text-[10px] font-black uppercase outline-none cursor-pointer"
+                value={filterAsset}
+                onChange={(e) => setFilterAsset(e.target.value)}
+              >
+                <option value="ALL">All Assets</option>
+                {[...new Set(trades.map(t => t.symbol))].map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+            <div className="flex items-center gap-3 px-4 py-2 bg-white/5 rounded-xl border border-white/5">
+              <Brain size={14} className="opacity-40" />
+              <select 
+                className="bg-transparent text-[10px] font-black uppercase outline-none cursor-pointer"
+                value={filterStrategy}
+                onChange={(e) => setFilterStrategy(e.target.value)}
+              >
+                <option value="ALL">All Strategies</option>
+                {[...new Set(trades.map(t => t.strategy))].map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+          </div>
+
+          {/* TOP STATS */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <StatBox label="Net Alpha" value={`$${stats.totalPnL}`} theme={theme} radius={borderRadius} color={stats.totalPnL >= 0 ? "text-emerald-400" : "text-rose-500"} icon={<TrendingUp size={16}/>} />
+            <StatBox label="Success Rate" value={`${stats.winRate}%`} theme={theme} radius={borderRadius} icon={<Target size={16}/>} />
+            <StatBox label="Profit Factor" value={stats.pf} theme={theme} radius={borderRadius} color="text-purple-500" icon={<Activity size={16}/>} />
+            <StatBox label="Avg Expectancy" value={`$${stats.avgWin}`} theme={theme} radius={borderRadius} icon={<ArrowUpRight size={16}/>} />
+          </div>
+
+          <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
+            {/* PERFORMANCE CURVE */}
+            <div style={{ backgroundColor: theme.card, borderColor: theme.border, borderRadius }} className="p-10 border shadow-2xl xl:col-span-2 overflow-hidden group relative">
+              <div className="flex justify-between items-center mb-10">
+                <div>
+                  <h3 className="text-2xl font-[950] italic uppercase tracking-tighter flex items-center gap-3">
+                    <Activity className="text-emerald-500" size={20}/> Neural Equity
+                  </h3>
+                  <p className="text-[9px] font-black opacity-20 uppercase tracking-[0.3em] mt-1">Institutional Performance Flow</p>
+                </div>
+                </div>
+              <div className="h-[450px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={filteredTrades.length > 0 ? filteredTrades : [{trade_date: '0', pnl: 0}]}>
+                    <defs>
+                      <linearGradient id="colorPnL" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor={theme.primary} stopOpacity={0.4}/>
+                        <stop offset="95%" stopColor={theme.primary} stopOpacity={0}/>
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.03)" vertical={false} />
+                    <XAxis dataKey="trade_date" axisLine={false} tickLine={false} tick={{fontSize: 10, fontWeight: 900, opacity: 0.3}} />
+                    <YAxis axisLine={false} tickLine={false} tick={{fontSize: 10, fontWeight: 900, opacity: 0.3}} />
+                    <Tooltip contentStyle={{ backgroundColor: '#0F1219', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '20px', fontWeight: '900', fontSize: '12px' }} itemStyle={{ color: theme.primary }} />
+                    <Area type="monotone" dataKey="pnl" stroke={theme.primary} strokeWidth={6} fillOpacity={1} fill="url(#colorPnL)" />
+                  </AreaChart>
+                </ResponsiveContainer>
+                </div>
+            </div>
+
+            {/* AI INSIGHTS & ACTIVITY */}
+            <div className="space-y-8">
+              <div style={{ backgroundColor: theme.card, borderColor: theme.border, borderRadius }} className="p-8 border shadow-xl bg-gradient-to-br from-white/[0.03] to-transparent relative overflow-hidden">
+                <div className="absolute -right-4 -top-4 opacity-5 rotate-12"><Brain size={120}/></div>
+                <h4 className="text-[11px] font-[950] uppercase opacity-40 mb-8 flex items-center gap-2"><Sparkles size={16} className="text-amber-400"/> Neural Suggestions</h4>
+                <div className="space-y-4 relative z-10">
+                  {aiInsights.map((text, i) => (
+                    <div key={i} className="p-6 rounded-[25px] bg-white/5 border border-white/5 hover:border-white/10 transition-all cursor-default">
+                      <p className="text-[9px] font-black text-purple-400 mb-2 uppercase tracking-widest">Logic Node 0{i+1}</p>
+                      <p className="text-xs font-bold opacity-80 italic leading-relaxed">"{text}"</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div style={{ backgroundColor: theme.card, borderColor: theme.border, borderRadius }} className="p-8 border shadow-xl flex-1">
+                <div className="flex justify-between items-center mb-8">
+                  <h4 className="text-[11px] font-[950] uppercase opacity-40">Recent Activity</h4>
+                  <History size={16} className="opacity-20"/>
+                </div>
+                <div className="space-y-4">
+                  {filteredTrades.slice(-3).reverse().map((trade, i) => (
+                    <div key={i} className="flex justify-between items-center p-5 rounded-[22px] bg-white/[0.02] border border-white/5 hover:bg-white/[0.04] transition-all">
+                      <div className="flex items-center gap-4">
+                        <div className={`w-2 h-8 rounded-full ${Number(trade.pnl) >= 0 ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+                        <div>
+                          <p className="text-[11px] font-[950] italic uppercase">{trade.symbol}</p>
+                          <p className="text-[8px] opacity-30 font-black uppercase">{trade.trade_date}</p>
+                        </div>
+                      </div>
+                      <p className={`text-sm font-[950] ${Number(trade.pnl) >= 0 ? 'text-emerald-400' : 'text-rose-500'}`}>
+                        {Number(trade.pnl) >= 0 ? '+' : ''}${trade.pnl}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* PERFORMANCE CALENDAR LEDGER */}
+          <div style={{ backgroundColor: theme.card, borderColor: theme.border, borderRadius }} className="p-10 border shadow-2xl">
+            <div className="flex justify-between items-center mb-10">
+              <div>
+              </div>
+              <h3 className="text-2xl font-[950] italic uppercase tracking-tighter flex items-center gap-3">
+                  <Calendar className="text-blue-500" size={20}/> Alpha Ledger
+                </h3>
+                <p className="text-[9px] font-black opacity-20 uppercase tracking-[0.3em] mt-1">Daily Performance Heatmap</p>
+              </div>
+              <div className="flex gap-4 text-[10px] font-black uppercase opacity-40">
+                <div className="flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-emerald-500"/> Wins: {stats.winCount}</div>
+                <div className="flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-rose-500"/> Losses: {stats.lossCount}</div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
+              {Array.from({ length: 28 }).map((_, i) => {
+                const date = new Date();
+                date.setDate(date.getDate() - (27 - i));
+                const dateStr = date.toISOString().split('T')[0];
+                const dayTrades = trades.filter(t => t.trade_date === dateStr);
+                const dayPnL = dayTrades.reduce((acc, t) => acc + Number(t.pnl), 0);
+                const dWins = dayTrades.filter(t => Number(t.pnl) > 0).length;
+                const dLosses = dayTrades.filter(t => Number(t.pnl) < 0).length;
+
+                return (
+                  <div key={i} className="aspect-square rounded-[22px] border border-white/5 p-4 flex flex-col justify-between group hover:bg-white/[0.04] transition-all relative overflow-hidden"
+                       style={{ borderTop: dayTrades.length > 0 ? `5px solid ${dayPnL >= 0 ? '#10b981' : '#f43f5e'}` : '' }}>
+                    <span className="text-[10px] font-black opacity-20">{date.getDate()} {date.toLocaleString('default', { month: 'short' })}</span>
+                    {dayTrades.length > 0 ? (
+                      <div>
+                        <p className={`text-xs font-[950] ${dayPnL >= 0 ? 'text-emerald-400' : 'text-rose-500'}`}>
+                          {dayPnL >= 0 ? '+' : ''}${Math.abs(dayPnL).toFixed(0)}
+                        </p>
+                        <div className="flex gap-2 mt-2">
+                        </div>
+                        <span className="text-[8px] font-black text-emerald-500/50">{dWins}W</span>
+                           <span className="text-[8px] font-black text-rose-500/50">{dLosses}L</span>
+                        </div>
+                    ) : (
+                      <div className="flex-1 flex items-center justify-center opacity-5"><Clock size={16}/></div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        
       )}
 
-      {/* FLOATING QUICK LOG BUTTON */}
-      <button onClick={() => setIsModalOpen(true)} className="fixed bottom-10 right-10 w-20 h-20 bg-blue-600 text-white rounded-3xl shadow-[0_20px_50px_rgba(37,99,235,0.3)] flex items-center justify-center z-[400] hover:scale-110 active:scale-95 transition-all border border-white/20 group">
-        <Plus size={36} className="group-hover:rotate-90 transition-transform duration-500"/>
-      </button>
+      {/* EDGE (PLAYBOOK) TAB */}
+      {activeTab === 'edge' && (
+        <div className="animate-in fade-in zoom-in-95 duration-700 space-y-10">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          <div style={{ backgroundColor: theme.card, borderColor: theme.border, borderRadius }} className="p-10 border shadow-2xl lg:col-span-2 relative overflow-hidden group">
+            <div className="absolute top-0 right-0 p-12 opacity-5 group-hover:rotate-12 transition-all duration-1000"><Target size={140}/></div>
+            <h3 className="text-3xl font-[950] italic uppercase tracking-tighter mb-10 flex items-center gap-4">
+              <ShieldCheck className="text-emerald-500" size={32} /> Playbook Efficiency
+            </h3>
 
-      <div className={`flex-1 transition-all duration-300 ${!isMobile ? (isSidebarOpen ? 'ml-[240px]' : 'ml-[70px]') : 'ml-0'} p-8 pb-40`}>
-        
-        {/* GLOBAL FILTERS */}
-        {activeTab !== 'settings' && (
-          <div className="flex flex-wrap items-center gap-4 bg-[#0F1219] p-3 rounded-[24px] border border-white/5 w-fit mb-10 shadow-xl">
-              <div className="flex items-center gap-3 px-4 border-r border-white/10">
-                  <Filter size={16} className="text-blue-500" />
-                  <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Analysis Filter</span>
-              </div>
-              <FilterSelect label="Strategy" value={filterStrategy} options={['All', ...new Set(trades.map(t => t.strategy))]} onChange={setFilterStrategy} />
-              <FilterSelect label="Asset" value={filterAsset} options={['All', ...new Set(trades.map(t => t.symbol))]} onChange={setFilterAsset} />
-          </div>
-        )}
-
-        {/* --- TAB: DASHBOARD (Full Analytics & Charts) --- */}
-        {activeTab === 'dashboard' && (
-          <div className="space-y-8 animate-in fade-in duration-500">
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-              <div className="relative overflow-hidden bg-gradient-to-br from-blue-600 to-indigo-800 p-8 rounded-[32px] text-white shadow-2xl">
-                <p className="text-[10px] font-black uppercase opacity-70 tracking-widest relative z-10">Sylla Rating</p>
-                <p className="text-5xl font-black italic mt-2 relative z-10">{stats.syllaScore}</p>
-                <Zap className="absolute -right-4 -bottom-4 text-white/10 w-32 h-32 rotate-12" />
-              </div>
-              <StatBox label="Win Rate" value={`${stats.winRate}%`} trend="+2.1%" />
-              <StatBox label="Profit Factor" value={stats.pf} color="text-blue-400" />
-              <StatBox label="Net Equity" value={`$${stats.totalPnL}`} color={stats.totalPnL >= 0 ? "text-emerald-400" : "text-rose-500"} />
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                <div className="bg-[#0F1219] border border-white/5 p-10 rounded-[40px] shadow-2xl h-[450px]">
-                    <h4 className="text-[11px] font-black uppercase text-slate-500 mb-8 flex items-center gap-2"><Activity size={16} className="text-blue-500"/> Growth Trajectory</h4>
-                    <ResponsiveContainer width="100%" height="85%">
-                        <AreaChart data={filteredTrades.map((t, i) => ({ n: i, p: filteredTrades.slice(0, i+1).reduce((s, c) => s + Number(c.pnl), 0) }))}>
-                            <defs>
-                                <linearGradient id="colorPnL" x1="0" y1="0" x2="0" y2="1">
-                                    <stop offset="5%" stopColor="#2563eb" stopOpacity={0.3}/>
-                                    <stop offset="95%" stopColor="#2563eb" stopOpacity={0}/>
-                                </linearGradient>
-                            </defs>
-                            <Area type="monotone" dataKey="p" stroke="#2563eb" strokeWidth={4} fillOpacity={1} fill="url(#colorPnL)" />
-                            <Tooltip contentStyle={{backgroundColor: '#0F1219', border: 'none', borderRadius: '15px'}} />
-                        </AreaChart>
-                    </ResponsiveContainer>
-                </div>
-                <div className="bg-[#0F1219] border border-white/5 p-10 rounded-[40px] shadow-2xl h-[450px]">
-                    <h4 className="text-[11px] font-black uppercase text-slate-500 mb-8 flex items-center gap-2"><History size={16} className="text-blue-500"/> Recent P&L Density</h4>
-                    <ResponsiveContainer width="100%" height="85%">
-                        <BarChart data={filteredTrades.slice(0, 12).reverse()}>
-                            <Bar dataKey="pnl" radius={[6, 6, 0, 0]}>
-                                {filteredTrades.slice(0, 12).reverse().map((e, i) => <Cell key={i} fill={Number(e.pnl) >= 0 ? '#10b981' : '#f43f5e'} />)}
-                            </Bar>
-                            <Tooltip cursor={{fill: 'transparent'}} contentStyle={{backgroundColor: '#0F1219', border: 'none'}} />
-                        </BarChart>
-                    </ResponsiveContainer>
-                </div>
-            </div>
-          </div>
-        )}
-
-        {/* --- TAB: SYLLA EDGE (Behavioral) --- */}
-        {activeTab === 'edge' && (
-          <div className="space-y-8 animate-in slide-in-from-right-10 duration-500">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                <div className="bg-[#0F1219] p-10 rounded-[40px] border border-white/5 shadow-2xl">
-                    <h4 className="text-[10px] font-black uppercase text-slate-500 mb-4 tracking-widest underline decoration-blue-500 underline-offset-8">Holding Efficiency</h4>
-                    <p className="text-6xl font-black italic text-white mt-6">{behavioralStats.holdEfficiency}%</p>
-                    <p className="text-[11px] text-slate-600 mt-6 uppercase font-bold leading-relaxed">How often you stuck to your target without closing early or panicking.</p>
-                </div>
-                <div className="col-span-2 bg-[#0F1219] p-10 rounded-[40px] border border-white/5 shadow-2xl">
-                    <h4 className="text-[10px] font-black uppercase text-slate-500 mb-8">Mistake Frequency</h4>
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
-                        {behavioralStats.mistakeData.length > 0 ? behavioralStats.mistakeData.map(m => (
-                            <div key={m.name} className="p-6 bg-[#07090D] border border-white/5 rounded-3xl hover:border-rose-500/50 transition-colors">
-                                <p className="text-rose-500 font-black italic text-2xl">{m.value}</p>
-                                <p className="text-[9px] font-black uppercase text-slate-500 mt-1">{m.name}</p>
-                            </div>
-                        )) : <p className="text-[10px] uppercase font-black opacity-20 col-span-full">No mistakes recorded. Perfect trading.</p>}
-                    </div>
-                </div>
-            </div>
-          </div>
-        )}
-
-        {/* --- TAB: BACKTEST (AI Trainer) --- */}
-        {activeTab === 'backtest' && (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-10 animate-in zoom-in-95 duration-500">
-            <div className="bg-[#0F1219] p-10 rounded-[40px] border border-white/5 shadow-2xl space-y-8">
-                <h3 className="text-white font-black italic uppercase text-lg flex items-center gap-2"><Cpu size={20} className="text-blue-500"/> AI Training Lab</h3>
-                <div className="space-y-6">
-                    <div>
-                        <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest block mb-3">Logic Description</label>
-                        <textarea value={aiStrategyDesc} onChange={e => setAiStrategyDesc(e.target.value)} placeholder="Describe your edge..." className="w-full bg-[#07090D] border border-white/5 p-5 rounded-3xl text-white text-[12px] h-40 outline-none focus:border-blue-500 shadow-inner" />
-                    </div>
-                    <div className="p-10 border-2 border-dashed border-white/10 rounded-[32px] flex flex-col items-center justify-center hover:border-blue-500 group transition-all cursor-pointer">
-                        <Camera className="text-slate-600 group-hover:text-blue-500 mb-3" size={32}/>
-                        <span className="text-[10px] font-black uppercase text-slate-500 group-hover:text-white">Upload Reference Entry</span>
-                    </div>
-                    <button onClick={runAiSimulation} className="w-full bg-blue-600 py-5 rounded-[24px] text-white font-black uppercase text-xs tracking-widest shadow-xl shadow-blue-600/20">Initialize Simulation</button>
-                </div>
-            </div>
-            <div className="lg:col-span-2 bg-[#0F1219] p-10 rounded-[40px] border border-white/5 shadow-2xl overflow-hidden relative">
-                <h4 className="text-[10px] font-black uppercase text-slate-500 mb-8 italic">Neural Simulation Results</h4>
-                <div className="space-y-3 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
-                    {btResults.map((r, i) => (
-                        <div key={i} className="flex items-center justify-between p-5 bg-[#07090D] rounded-2xl border border-white/5 border-l-4 border-l-blue-600 animate-in slide-in-from-left-4">
-                            <span className="text-[11px] font-black text-white italic tracking-widest uppercase">SYLLA_SIM_EVAL_{i+1}</span>
-                            <span className={`text-[12px] font-black ${r.res === 'WIN' ? 'text-emerald-500' : 'text-rose-500'}`}>{r.res} ({r.val >= 0 ? '+' : ''}${r.val})</span>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
+              <div className="space-y-8">
+                {[...new Set(trades.map(t => t.strategy))].map((strat, i) => {
+                  const stratTrades = trades.filter(t => t.strategy === strat);
+                  const winR = ((stratTrades.filter(t => Number(t.pnl) > 0).length / stratTrades.length) * 100).toFixed(1);
+                  return (
+                    <div key={strat} className="border-l-4 p-6 hover:bg-white/5 transition-all" style={{ borderColor: i % 2 === 0 ? theme.primary : '#10b981' }}>
+                      <p className="text-[11px] font-[950] opacity-30 uppercase tracking-[0.2em]">{i === 0 ? 'Master Setup' : 'Secondary Setup'}</p>
+                      <p className="text-2xl font-[950] italic uppercase mt-2">{strat}</p>
+                      <div className="flex items-center gap-6 mt-4">
+                      <span className="text-3xl font-[950]" style={{ color: i % 2 === 0 ? theme.primary : '#10b981' }}>{winR}%</span>
+                          <div className="h-1.5 flex-1 bg-white/10 rounded-full overflow-hidden">
+                            <div className="h-full" style={{ width: `${winR}%`, backgroundColor: i % 2 === 0 ? theme.primary : '#10b981' }} />
+                          </div>
                         </div>
-                    ))}
-                    {!btResults.length && <div className="h-64 flex flex-col items-center justify-center opacity-10"><ShieldCheck size={60} /></div>}
+                      </div>
+                    );
+                  })}
                 </div>
-            </div>
-          </div>
-        )}
 
-        {/* --- TAB: JOURNAL HISTORY (RESTORED) --- */}
-        {activeTab === 'log' && (
-          <div className="bg-[#0F1219] rounded-[40px] border border-white/5 shadow-2xl overflow-hidden animate-in fade-in duration-500">
-             <div className="p-8 border-b border-white/5 flex justify-between items-center bg-[#131720]">
-                <h3 className="text-white font-black uppercase italic tracking-tighter">Verified Trade History</h3>
-                <span className="text-[10px] font-black bg-white/5 px-4 py-2 rounded-full text-slate-400">{filteredTrades.length} Trades Logged</span>
-             </div>
-             <div className="overflow-x-auto">
-                <table className="w-full text-left">
-                    <thead className="bg-[#07090D] text-[10px] font-black uppercase text-slate-500 tracking-widest">
-                        <tr>
-                            <th className="px-8 py-5">Date</th>
-                            <th className="px-8 py-5">Symbol</th>
-                            <th className="px-8 py-5">Strategy</th>
-                            <th className="px-8 py-5 text-right">Net P&L</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-white/5">
-                        {filteredTrades.map((t, idx) => (
-                            <tr key={idx} className="hover:bg-white/[0.02] transition-colors group">
-                                <td className="px-8 py-5 text-[11px] font-bold text-slate-400">{t.trade_date}</td>
-                                <td className="px-8 py-5 text-[12px] font-black text-white italic uppercase tracking-tighter">{t.symbol}</td>
-                                <td className="px-8 py-5 text-[10px] font-black uppercase text-slate-500">{t.strategy}</td>
-                                <td className={`px-8 py-5 text-right text-[12px] font-black ${Number(t.pnl) >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
-                                    {Number(t.pnl) >= 0 ? '+' : ''}${t.pnl}
-                                </td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-             </div>
-          </div>
-        )}
-
-        {/* --- TAB: PLAYBOOK --- */}
-        {activeTab === 'playbook' && (
-          <div className="max-w-2xl bg-[#0F1219] border border-white/5 p-12 rounded-[50px] shadow-2xl">
-            <h3 className="text-white font-black italic uppercase text-2xl mb-8 flex items-center gap-3">The Edge Playbook</h3>
-            <div className="space-y-4">
-              {playbookRules.map((rule, idx) => (
-                <div key={idx} className="flex items-center justify-between bg-[#07090D] p-6 rounded-3xl border border-white/5 group transition-all">
-                  <span className="text-[12px] text-white font-black uppercase italic tracking-widest">{rule}</span>
-                  <button onClick={() => setPlaybookRules(playbookRules.filter((_, i) => i !== idx))} className="text-rose-500 opacity-0 group-hover:opacity-100 transition-all"><Trash2 size={18}/></button>
+                <div className="bg-white/5 rounded-[35px] p-10 border border-white/5 backdrop-blur-md">
+                  <h4 className="text-[11px] font-[950] opacity-40 uppercase mb-8 flex items-center gap-2"><Cpu size={14}/> Neural Risk Assessment</h4>
+                  <div className="space-y-6">
+                    <MetricRow label="Expectancy" val={`+${stats.expectancy}R`} color="text-emerald-400" />
+                    <MetricRow label="Profit Factor" val={stats.pf} />
+                    <MetricRow label="Max DD" val="-4.2%" color="text-rose-500" />
+                    <MetricRow label="Recovery" val="3.85" />
+                  </div>
+                  <button style={{ backgroundColor: theme.primary }} className="w-full mt-10 py-5 rounded-[22px] text-white font-[950] text-[11px] uppercase tracking-[0.3em] hover:scale-105 transition-all shadow-2xl">
+                    Generate Deep Report
+                  </button>
                 </div>
-              ))}
+              </div>
             </div>
-            <div className="mt-10 flex gap-4">
-              <input value={newRuleInput} onChange={e => setNewRuleInput(e.target.value)} placeholder="Add new confirmation rule..." className="flex-1 bg-[#07090D] border border-white/5 p-5 rounded-3xl text-xs text-white outline-none focus:border-blue-500 shadow-inner" />
-              <button onClick={() => { if(newRuleInput) {setPlaybookRules([...playbookRules, newRuleInput]); setNewRuleInput('');} }} className="bg-white text-black px-10 rounded-3xl font-black uppercase text-[10px] hover:bg-blue-600 hover:text-white transition-all">Add</button>
-            </div>
-          </div>
-        )}
 
-        {/* --- TAB: SETTINGS --- */}
-        {activeTab === 'settings' && (
-          <div className="max-w-4xl animate-in slide-in-from-bottom-5 duration-500 space-y-10">
-            <header><h2 className="text-4xl font-black text-white italic uppercase tracking-tighter underline decoration-blue-600 decoration-8 underline-offset-[12px]">Settings</h2></header>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
-                <div className="bg-[#0F1219] border border-white/5 rounded-[40px] p-10 space-y-8 shadow-2xl">
-                    <h3 className="text-white font-black uppercase text-sm flex items-center gap-3"><Globe size={18} className="text-blue-500"/> Preferences</h3>
-                    <SettingToggle label="Language" value={language} options={['English', 'Spanish', 'French']} onChange={setLanguage} />
-                    <SettingToggle label="Screen Layout" value={aspectRatio} options={['Full', 'Compact']} onChange={setAspectRatio} />
+            {/* ALPHA DISTRIBUTION */}
+            <div style={{ backgroundColor: theme.card, borderColor: theme.border, borderRadius }} className="p-10 border shadow-xl relative flex flex-col overflow-hidden">
+              <h4 className="text-[11px] font-[950] uppercase opacity-40 mb-10 flex items-center gap-2"><Globe size={16}/> Alpha Distribution</h4>
+              <div className="flex-1 min-h-[350px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                  <Pie
+                      data={[...new Set(trades.map(t => t.symbol))].map(s => ({
+                        name: s,
+                        value: trades.filter(t => t.symbol === s).length
+                      }))}
+                      innerRadius={90}
+                      outerRadius={120}
+                      paddingAngle={10}
+                      dataKey="value"
+                    >
+                      {trades.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={index % 2 === 0 ? theme.primary : '#10b981'} stroke="none" />
+                      ))}
+                    </Pie>
+                    <Tooltip contentStyle={{ backgroundColor: '#0F1219', border: 'none', borderRadius: '15px', fontWeight: '950', fontSize: '10px' }} />
+                  </PieChart>
+                </ResponsiveContainer>
                 </div>
-                <div className="bg-[#0F1219] border border-white/5 rounded-[40px] p-10 space-y-8 shadow-2xl">
-                    <h3 className="text-white font-black uppercase text-sm flex items-center gap-3"><User size={18} className="text-blue-500"/> Account</h3>
-                    <div className="p-6 bg-[#07090D] border border-white/5 rounded-3xl"><p className="text-[9px] font-black text-slate-600 uppercase mb-1">User Identity</p><p className="text-white font-black text-xs italic">{user?.email || "Trader@Sylla.AI"}</p></div>
-                    <button onClick={handleLogout} className="w-full bg-rose-500/10 hover:bg-rose-500 text-rose-500 hover:text-white py-6 rounded-[28px] font-black uppercase text-xs tracking-widest transition-all flex items-center justify-center gap-3"><LogOut size={16}/> End Session</button>
-                </div>
+              <div className="mt-8 space-y-4">
+                 {[...new Set(trades.map(t => t.symbol))].slice(0, 3).map((s, i) => (
+                   <div key={s} className="flex justify-between items-center text-[11px] font-[950] uppercase">
+                     <span className="opacity-40 flex items-center gap-2">
+                       <div className="w-2 h-2 rounded-full" style={{ backgroundColor: i % 2 === 0 ? theme.primary : '#10b981' }} /> {s}
+                     </span>
+                     <span>${trades.filter(t => t.symbol === s).reduce((a, b) => a + Number(b.pnl), 0).toFixed(0)}</span>
+                   </div>
+                 ))}
+              </div>
             </div>
-          </div>
-        )}
-      </div>
-
-      {/* MODAL: MANUAL TRADE ENTRY (FULL) */}
-      {isModalOpen && (
-        <div className="fixed inset-0 bg-black/98 backdrop-blur-xl z-[600] flex items-center justify-center p-6">
-          <div className="bg-[#0F1219] w-full max-w-2xl rounded-[50px] border border-white/10 p-12 max-h-[90vh] overflow-y-auto shadow-3xl custom-scrollbar">
-             <div className="flex justify-between items-center mb-12">
-                <h3 className="text-white font-black italic uppercase text-2xl underline decoration-blue-600 decoration-4 underline-offset-8">Journal Entry</h3>
-                <button onClick={() => setIsModalOpen(false)} className="bg-white/5 p-3 rounded-2xl text-slate-500 hover:text-white"><X/></button>
-             </div>
-             <div className="grid grid-cols-2 gap-8 mb-8">
-                <ModalInput label="Asset/Pair" value={form.symbol} onChange={v => setForm({...form, symbol: v})} />
-                <ModalInput label="Net P&L ($)" value={form.pnl} onChange={v => setForm({...form, pnl: v})} />
-             </div>
-             <div className="grid grid-cols-2 gap-8 mb-8">
-                <ModalSelect label="Psychology" options={['Neutral', 'Focused', 'Greedy', 'Anxious']} onChange={v => setForm({...form, mindset: v})} />
-                <ModalSelect label="Exec. Quality" options={['Perfect', 'Early Exit', 'Late Entry', 'Chased']} onChange={v => setForm({...form, mistake: v})} />
-             </div>
-             <div className="mb-10 p-10 bg-[#07090D] rounded-[40px] border border-white/5 shadow-inner">
-                <p className="text-[10px] font-black uppercase text-slate-600 mb-8 text-center tracking-widest italic">Playbook Checklist</p>
-                <div className="grid grid-cols-1 gap-3">
-                    {playbookRules.map(rule => (
-                        <button key={rule} onClick={() => setSelectedRules(prev => prev.includes(rule) ? prev.filter(r => r !== rule) : [...prev, rule])} className={`text-left p-5 rounded-2xl border text-[11px] font-black uppercase flex justify-between items-center transition-all ${selectedRules.includes(rule) ? 'border-blue-500 bg-blue-500/10 text-white shadow-lg' : 'border-white/5 text-slate-700 hover:text-slate-400'}`}>
-                            {rule} {selectedRules.includes(rule) && <CheckCircle2 size={16} className="text-blue-500"/>}
-                        </button>
-                    ))}
-                </div>
-             </div>
-             <button onClick={() => { supabase.from('trades').insert([{...form, user_id: user.id, rules_followed: selectedRules}]).then(() => { fetchTrades(); setIsModalOpen(false); }); }} className="w-full bg-white text-black py-6 rounded-[30px] font-black uppercase text-sm hover:bg-blue-600 hover:text-white transition-all shadow-2xl">Execute Journaling</button>
           </div>
         </div>
       )}
+
+      {/* SYNC TAB */}
+      {activeTab === 'sync' && (
+        <div className="max-w-4xl mx-auto animate-in fade-in slide-in-from-bottom-10 duration-700">
+        <div style={{ backgroundColor: theme.card, borderColor: theme.border, borderRadius }} className="p-16 border shadow-2xl relative overflow-hidden">
+          <div className="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-transparent via-blue-500 to-transparent opacity-50" />
+          
+          <div className="flex flex-col md:flex-row justify-between items-start gap-16">
+            <div className="space-y-10 flex-1">
+              <div>
+                <h3 className="text-4xl font-[950] italic uppercase tracking-tighter flex items-center gap-4">
+                  <Server className="text-blue-500" size={32} /> Terminal Bridge
+                </h3>
+                <p className="text-[11px] font-black opacity-30 uppercase tracking-[0.4em] mt-3">MetaTrader 5 & Broker Gateway</p>
+              </div>
+
+              {/* SYNC MODE TOGGLE */}
+              <div className="flex p-1.5 bg-white/5 rounded-2xl border border-white/5 w-fit">
+                <button 
+                  onClick={() => setSyncMode('manual')}
+                  className={`px-6 py-2 rounded-xl text-[10px] font-[950] uppercase transition-all ${syncMode === 'manual' ? 'bg-white text-black' : 'opacity-40'}`}
+                >Manual Log</button>
+                <button 
+                  onClick={() => setSyncMode('auto')}
+                  className={`px-6 py-2 rounded-xl text-[10px] font-[950] uppercase transition-all ${syncMode === 'auto' ? 'bg-blue-500 text-white' : 'opacity-40'}`}
+                  >Auto-Sync (API)</button>
+                </div>
+
+                <div className="space-y-5">
+                  <InputBlock label="MetaTrader Login" val={mt5Form.login} set={(v) => setMt5Form({...mt5Form, login: v})} theme={theme} icon={<Fingerprint size={14}/>} />
+                  <InputBlock label="Master Password" val={mt5Form.password} set={(v) => setMt5Form({...mt5Form, password: v})} theme={theme} type="password" icon={<Lock size={14}/>} />
+                  <InputBlock label="Broker Server" val={mt5Form.server} set={(v) => setMt5Form({...mt5Form, server: v})} theme={theme} icon={<Globe size={14}/>} />
+                  {syncMode === 'auto' && <InputBlock label="Broker API Key" val={mt5Form.apiKey} set={(v) => setMt5Form({...mt5Form, apiKey: v})} theme={theme} icon={<Key size={14}/>} />}
+                </div>
+
+                <button 
+                  className="w-full py-6 rounded-[25px] bg-white text-black font-[950] text-[11px] uppercase tracking-[0.3em] hover:scale-[1.02] active:scale-95 transition-all shadow-2xl flex items-center justify-center gap-4"
+                  onClick={() => alert("Establishing Secure Handshake with Broker Terminal...")}
+                >
+                  <Key size={18} /> Authorize Connection
+                </button>
+              </div>
+              <div className="w-full md:w-80 space-y-8">
+                <div className="p-8 rounded-[40px] border border-white/5 bg-white/[0.02] space-y-6">
+                  <div className="flex items-center gap-4">
+                    <div className="w-3 h-3 rounded-full bg-rose-500 animate-pulse shadow-[0_0_15px_#f43f5e]" />
+                    <span className="text-[11px] font-[950] uppercase opacity-50">Link Status: Offline</span>
+                  </div>
+                  <div className="space-y-3">
+                    <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
+                      <div className="h-full bg-blue-500 opacity-20" style={{ width: '0%' }} />
+                    </div>
+                    <p className="text-[9px] font-black opacity-20 uppercase tracking-widest text-center">Neural Link Inactive</p>
+                  </div>
+                </div>
+                <div className="p-8 rounded-[40px] border border-blue-500/20 bg-blue-500/5">
+                  <h4 className="text-[10px] font-[950] text-blue-400 uppercase mb-4 flex items-center gap-3">
+                    <Brain size={16}/> Chart Intelligence
+                  </h4>
+                  <p className="text-[11px] font-bold opacity-60 leading-relaxed italic">
+                    "Syncing charts allows our AI to analyze price action context, candle structures, and news timing to suggest strategy optimizations."
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* SETTINGS TAB */}
+      {activeTab === 'settings' && (
+        <div className="max-w-5xl mx-auto animate-in fade-in slide-in-from-right-10 duration-700">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            <div style={{ backgroundColor: theme.card, borderRadius }} className="p-10 border border-white/5 space-y-3">
+              {['appearance', 'security', 'billing'].map(sub => (
+                <button
+                key={sub} 
+                  onClick={() => setActiveSettingsSubTab(sub)}
+                  className={`w-full p-5 rounded-2xl text-[11px] font-[950] uppercase tracking-widest flex items-center gap-4 transition-all ${activeSettingsSubTab === sub ? 'bg-white text-black' : 'hover:bg-white/5 opacity-40'}`}
+                >
+                  {sub === 'appearance' && <Palette size={16}/>}
+                  {sub === 'security' && <Lock size={16}/>}
+                  {sub === 'billing' && <Zap size={16}/>}
+                  {sub}
+                </button>
+              ))}
+            </div>
+            <div style={{ backgroundColor: theme.card, borderRadius }} className="md:col-span-2 p-12 border border-white/5 relative overflow-hidden">
+               {activeSettingsSubTab === 'appearance' && (
+                 <div className="space-y-12 animate-in fade-in duration-500">
+                    <div>
+                      <h4 className="text-[11px] font-[950] uppercase opacity-30 mb-8">Neural Accent Palette</h4>
+                      <div className="grid grid-cols-4 md:grid-cols-8 gap-5">
+                      {Object.keys(accs).map(colorName => (
+                          <button 
+                            key={colorName}
+                            onClick={() => setAccentColor(colorName)}
+                            className={`h-12 rounded-xl transition-all border-4 ${accentColor === colorName ? 'border-white scale-110 shadow-2xl' : 'border-transparent opacity-40'}`}
+                            style={{ backgroundColor: accs[colorName] }}
+                          />
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="flex justify-between items-center p-8 bg-white/5 rounded-[30px] border border-white/5">
+                      <div>
+                        <p className="text-xs font-[950] uppercase italic tracking-wider">Glassmorphism Mode</p>
+                        <p className="text-[10px] font-bold opacity-30 uppercase mt-2">Advanced UI Transparency & Blur</p>
+                      </div>
+                      <button 
+                        onClick={() => setGlassMode(!glassMode)}
+                        style={{ backgroundColor: glassMode ? theme.primary : '#333' }}
+                        className="w-16 h-9 rounded-full relative transition-all"
+                      >
+                        <div className={`absolute top-1.5 w-6 h-6 bg-white rounded-full transition-all ${glassMode ? 'left-8' : 'left-1.5'}`} />
+                      </button>
+                    </div>
+
+                    <div>
+                      <label className="text-[11px] font-[950] uppercase opacity-30 block mb-6 text-center tracking-[0.3em]">Interface Curvature: {borderRadius}</label>
+                      <input 
+                        type="range" min="0" max="60" value={parseInt(borderRadius)} 
+                        onChange={(e) => setBorderRadius(`${e.target.value}px`)}
+                        className="w-full h-1.5 bg-white/10 rounded-lg appearance-none cursor-pointer"
+                        style={{ accentColor: theme.primary }}
+                      />
+                    </div>
+                 </div>
+                 )}
+                 </div>
+               </div>
+             </div>
+           )}
+     
+           {/* QUICK LOG MODAL */}
+           {isModalOpen && (
+             <div className="fixed inset-0 z-[600] flex items-center justify-center p-4 animate-in fade-in duration-500">
+               <div className="absolute inset-0 bg-black/95 backdrop-blur-2xl" onClick={() => setIsModalOpen(false)} />
+               
+               <div style={{ backgroundColor: theme.card, borderColor: theme.border, borderRadius }} className="relative w-full max-w-5xl max-h-[90vh] overflow-y-auto border shadow-2xl p-12 animate-in zoom-in-95 duration-500 no-scrollbar">
+                 
+                 <div className="flex justify-between items-center mb-12">
+                   <div>
+                   <h2 className="text-4xl font-[950] italic uppercase tracking-tighter flex items-center gap-4">
+                  <Terminal className="text-emerald-500" size={32} /> New Execution
+                </h2>
+                <p className="text-[10px] font-black opacity-30 uppercase tracking-[0.4em] mt-3">Neural Logging Protocol Alpha-1</p>
+              </div>
+              <button onClick={() => setIsModalOpen(false)} className="w-14 h-14 rounded-full bg-white/5 flex items-center justify-center hover:bg-rose-500 transition-all group">
+                <X size={24} className="group-hover:rotate-90 transition-all" />
+              </button>
+            </div>
+            
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
+              {/* LEFT: DATA */}
+              <div className="space-y-8">
+                <InputBlock label="Trading Asset" val={form.symbol} set={(v) => setForm({...form, symbol: v.toUpperCase()})} theme={theme} icon={<Globe size={14}/>} placeholder="e.g. NAS100, XAUUSD" />
+                
+                <div className="grid grid-cols-2 gap-6">
+                <InputBlock label="Net PnL ($)" val={form.pnl} set={(v) => setForm({...form, pnl: v})} theme={theme} type="number" icon={<TrendingUp size={14}/>} />
+                  <div>
+                    <label className="text-[10px] font-[950] uppercase opacity-20 block mb-3 ml-2 flex items-center gap-2"><Calendar size={14}/> Execution Date</label>
+                    <input 
+                      type="date" 
+                      className="w-full bg-white/5 border border-white/5 p-5 rounded-[22px] font-[950] text-xs outline-none focus:border-white/20 transition-all text-white" 
+                      style={{ borderLeft: `5px solid ${theme.primary}` }}
+                      value={form.trade_date}
+                      onChange={(e) => setForm({...form, trade_date: e.target.value})}
+                    />
+                  </div>
+                </div>
+
+                <div className="p-8 rounded-[35px] bg-white/5 border border-white/5 space-y-6">
+                   <p className="text-[11px] font-[950] uppercase opacity-30 italic tracking-widest">Strategy Selection</p>
+                   <div className="flex flex-wrap gap-3">
+                   {['VWAP Rejection', 'Mean Reversion', 'Trend Cap', 'News Spike'].map(s => (
+                       <button 
+                         key={s} 
+                         onClick={() => setForm({...form, strategy: s})}
+                         className={`px-6 py-3 rounded-2xl text-[10px] font-[950] uppercase transition-all ${form.strategy === s ? 'bg-white text-black scale-105 shadow-xl' : 'bg-white/5 opacity-40 hover:opacity-100'}`}
+                       >
+                         {s}
+                       </button>
+                       ))}
+                   </div>
+                </div>
+              </div>
+
+              {/* RIGHT: CONTEXT */}
+              <div className="space-y-8">
+                <div className="space-y-4">
+                <label className="text-[10px] font-[950] uppercase opacity-20 ml-2 flex items-center gap-2">
+                    <ImageIcon size={14} /> Visual Evidence (Screenshot)
+                  </label>
+                  <div 
+                    className="group border-2 border-dashed border-white/10 rounded-[40px] p-12 flex flex-col items-center justify-center hover:border-white/30 transition-all cursor-pointer bg-white/[0.02]"
+                    onClick={() => alert("Upload to Supabase Storage Simulation...")}
+                  >
+                    <div className="w-14 h-14 rounded-2xl bg-white/5 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                      <Plus size={24} className="opacity-40" />
+                    </div>
+                    <p className="text-[10px] font-[950] uppercase opacity-30 italic">Drop Execution Capture</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-6">
+                  <SelectBlock label="Risk/Reward" val={form.risk_reward} set={(v) => setForm({...form, risk_reward: v})} theme={theme} options={['1:1', '1:2', '1:3', '1:5+']} />
+                  <SelectBlock label="Mindset" val={form.mindset} set={(v) => setForm({...form, mindset: v})} theme={theme} options={['Disciplined', 'Anxious', 'Greedy', 'FOMO']} />
+                </div>
+
+                <div className="space-y-3">
+                <label className="text-[10px] font-[950] uppercase opacity-20 ml-2 flex items-center gap-2"><Brain size={16} /> Strategy Logic Notes</label>
+                  <textarea
+                    rows="5"
+                    className="w-full bg-white/5 border border-white/5 p-6 rounded-[30px] font-bold text-xs outline-none focus:border-white/20 transition-all resize-none text-white leading-relaxed"
+                    style={{ borderLeft: `5px solid ${theme.primary}` }}
+                    placeholder="Describe the institutional liquidity flow and entry context..."
+                    value={form.notes}
+                    onChange={(e) => setForm({ ...form, notes: e.target.value })}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <button
+              className="w-full mt-12 py-7 rounded-[35px] font-[950] text-sm uppercase tracking-[0.4em] transition-all hover:scale-[1.01] active:scale-95 shadow-2xl relative overflow-hidden group"
+              style={{ backgroundColor: theme.primary, color: '#fff' }}
+              onClick={async () => {
+                const { error } = await supabase.from('trades').insert([form]);
+                if (!error) { setIsModalOpen(false); fetchTrades(); }
+                else alert("Ledger Sync Error. Check Connection.");
+              }}
+            >
+              <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-500" />
+              <span className="relative z-10 flex items-center justify-center gap-4"><Fingerprint size={20}/> Commit to Ledger</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* FIXED QUICK LOG TRIGGER */}
+      <button 
+        style={{ backgroundColor: theme.primary }} 
+        onClick={() => setIsModalOpen(true)}
+        className="fixed bottom-12 right-12 w-24 h-24 text-white rounded-[40px] shadow-[0_30px_60px_rgba(0,0,0,0.6)] flex items-center justify-center z-[500] hover:scale-110 active:scale-90 transition-all border border-white/20 group hover:rotate-6"
+      >
+        <Plus size={40} className="group-hover:rotate-90 transition-transform duration-700" />
+      </button>
+
     </main>
   );
 }
 
-// --- FULL HELPER SUITE ---
-function SidebarItem({ icon, label, active, onClick, isOpen }) {
+// COMPONENTS
+function StatBox({ label, value, color, theme, radius, icon }) {
   return (
-    <button onClick={onClick} className={`w-full flex items-center rounded-2xl h-14 transition-all duration-300 ${active ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/30' : 'text-slate-500 hover:bg-white/5'} ${isOpen ? 'px-5 gap-4' : 'justify-center'}`}>
-      {icon} {isOpen && <span className="text-[11px] font-black uppercase tracking-widest">{label}</span>}
-    </button>
-  );
-}
-
-function StatBox({ label, value, color = "text-white", trend }) {
-  return (
-    <div className="bg-[#0F1219] border border-white/5 p-8 rounded-[32px] shadow-xl relative group">
-      <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">{label}</p>
-      <div className="flex items-baseline gap-2">
-        <p className={`text-3xl font-black italic ${color}`}>{value}</p>
-        {trend && <span className="text-[9px] font-black text-emerald-500">{trend}</span>}
+    <div style={{ backgroundColor: theme.card, borderColor: theme.border, borderRadius: radius }} className="border p-10 relative group hover:scale-[1.03] transition-all shadow-2xl overflow-hidden">
+      <div className="flex justify-between items-start mb-6">
+        <p className="text-[11px] font-[950] opacity-40 uppercase tracking-[0.3em]">{label}</p>
+        <div style={{ color: theme.primary }} className="opacity-50 group-hover:opacity-100 transition-opacity">{icon}</div>
       </div>
+      <p className={`text-5xl font-[950] italic tracking-tighter ${color || 'text-white'}`}>{value}</p>
+      <div className="absolute bottom-0 left-0 h-1.5 w-0 group-hover:w-full transition-all duration-700" style={{ backgroundColor: theme.primary }} />
     </div>
   );
 }
 
-function FilterSelect({ label, value, options, onChange }) {
-    return (
-        <div className="flex flex-col px-5 border-r border-white/10 last:border-0">
-            <span className="text-[8px] font-black text-slate-600 uppercase mb-1 tracking-tighter">{label}</span>
-            <select value={value} onChange={e => onChange(e.target.value)} className="bg-transparent text-[11px] font-black text-white outline-none cursor-pointer uppercase">
-                {options.map(opt => <option key={opt} value={opt} className="bg-[#0F1219]">{opt}</option>)}
-            </select>
-        </div>
-    );
-}
-
-function ModalInput({ label, value, onChange }) {
+function InputBlock({ label, val, set, theme, type = "text", icon, placeholder }) {
   return (
-    <div className="w-full">
-        <label className="text-[10px] font-black text-slate-500 uppercase block mb-3 tracking-widest">{label}</label>
-        <input className="w-full bg-[#07090D] border border-white/5 p-5 rounded-[20px] text-white font-black text-[13px] outline-none focus:border-blue-500 transition-all shadow-inner" value={value} onChange={e => onChange(e.target.value)} />
+    <div className="space-y-3">
+      <label className="text-[10px] font-[950] uppercase opacity-20 flex items-center gap-3 ml-3">
+        {icon} {label}
+      </label>
+      <input 
+        type={type} 
+        placeholder={placeholder}
+        className="w-full bg-white/5 border border-white/5 p-5 rounded-[22px] font-[950] text-xs outline-none focus:border-white/30 transition-all text-white placeholder:opacity-10" 
+        style={{ borderLeft: `5px solid ${theme.primary}` }} 
+        value={val}
+        onChange={(e) => set(e.target.value)} 
+      />
     </div>
   );
 }
 
-function ModalSelect({ label, options, onChange }) {
+function SelectBlock({ label, val, set, theme, options }) {
   return (
-    <div className="w-full">
-        <label className="text-[10px] font-black text-slate-500 uppercase block mb-3 tracking-widest">{label}</label>
-        <select onChange={e => onChange(e.target.value)} className="w-full bg-[#07090D] border border-white/5 p-5 rounded-[20px] text-white font-black text-[11px] uppercase outline-none focus:border-blue-500 appearance-none shadow-inner">
-            {options.map(o => <option key={o} value={o}>{o}</option>)}
+    <div className="space-y-3">
+      <label className="text-[10px] font-[950] uppercase opacity-20 ml-3">{label}</label>
+      <select 
+        className="w-full bg-white/5 border border-white/5 p-5 rounded-[22px] font-[950] text-xs outline-none cursor-pointer appearance-none text-white"
+        style={{ borderLeft: `5px solid ${theme.primary}` }}
+        value={val}
+        onChange={(e) => set(e.target.value)}
+      >
+        {options.map(o => <option key={o} value={o}>{o}</option>)}
         </select>
     </div>
   );
 }
 
-function SettingToggle({ label, value, options, onChange }) {
-    return (
-        <div className="space-y-4">
-            <label className="text-[10px] font-black text-slate-600 uppercase block ml-1 tracking-widest">{label}</label>
-            <div className="flex gap-2">
-                {options.map(opt => (
-                    <button key={opt} onClick={() => onChange(opt)} className={`flex-1 py-4 rounded-2xl border text-[10px] font-black transition-all ${value === opt ? 'bg-blue-600 border-blue-600 text-white shadow-lg' : 'border-white/5 text-slate-500 hover:bg-white/5'}`}>{opt}</button>
-                ))}
-            </div>
-        </div>
-    );
+function MetricRow({ label, val, color }) {
+  return (
+    <div className="flex justify-between items-center text-[11px] font-[950] uppercase italic tracking-widest border-b border-white/5 pb-4">
+      <span className="opacity-40">{label}</span>
+      <span className={color || 'text-white'}>{val}</span>
+    </div>
+  );
 }
