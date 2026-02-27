@@ -4,706 +4,722 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../supabaseClient';
 import { 
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, 
-  CartesianGrid, PieChart, Pie, Cell, BarChart, Bar
+  LineChart, Line, BarChart, Bar, Cell, PieChart, Pie
 } from 'recharts';
-import { 
-    Plus, X, Zap, Brain, Terminal, 
-    Fingerprint, Key, Server, Activity, Target, Sparkles,
-    ShieldCheck, History, TrendingUp, Calendar, 
-    Globe, Lock, ArrowUpRight, Clock, Search, Filter,
-    Image as ImageIcon, ChevronRight, BarChart3, AlertCircle,
-    Cpu, Palette // <--- Add Cpu and Palette here
-  } from 'lucide-react';
+import {
+  Plus, X, Zap, Cpu, Settings, Palette, Brain, Terminal,
+  Fingerprint, Key, Server, Activity, Target, Sparkles,
+  ShieldCheck, History, TrendingUp, Calendar, AlertCircle,
+  LayoutDashboard, Globe, Lock, Clock, ArrowUpRight, BarChart4,
+  LogOut, User, CreditCard, Languages, CheckCircle2, AlertTriangle, 
+  Timer, ZapOff, Image as ImageIcon, ChevronRight, Moon, Sun, 
+  Wallet, Gauge, Database, MessageSquare, Briefcase, Menu, Search, Download
+} from 'lucide-react';
 
-export default function TradingJournal() {
-    const [hasMounted, setHasMounted] = useState(false);
-    const [activeTab, setActiveTab] = useState('dashboard');
-    const [activeSettingsSubTab, setActiveSettingsSubTab] = useState('appearance');
-    const [trades, setTrades] = useState([]);
-    const [isModalOpen, setIsModalOpen] = useState(false);
-    
-    // THEME & UI STATE
-    const [accentColor, setAccentColor] = useState('Purple'); 
-    const [glassMode, setGlassMode] = useState(true);
-    const [borderRadius, setBorderRadius] = useState('40px');
-    
-    // FILTERS
-    const [filterAsset, setFilterAsset] = useState('ALL');
-    const [filterStrategy, setFilterStrategy] = useState('ALL');
-    const [filterTimeframe, setFilterTimeframe] = useState('ALL');
+const TradingTerminal = () => {
+  // --- 1. CORE STATE & COMMERCIAL ENGINE ---
+  const [hasMounted, setHasMounted] = useState(false);
+  const [activeTab, setActiveTab] = useState('DASHBOARD');
+  const [userTier, setUserTier] = useState('ELITE'); // FREE, PRO, ELITE
+  const [isPrivacyMode, setIsPrivacyMode] = useState(false);
+  const [isSidebarExpanded, setIsSidebarExpanded] = useState(false);
+  const [isLogModalOpen, setIsLogModalOpen] = useState(false);
 
-    // SYNC & FORM STATE
-  const [syncMode, setSyncMode] = useState('manual'); // 'manual' or 'auto'
-  const [mt5Form, setMt5Form] = useState({ login: '', password: '', server: '', apiKey: '' });
-  const [form, setForm] = useState({ 
-    symbol: '', pnl: '', strategy: 'VWAP Rejection', direction: 'BUY',
-    risk_reward: '1:2', mindset: 'Neutral', exit_quality: 'Good', notes: '', 
-    trade_date: new Date().toISOString().split('T')[0],
-    screenshot_url: ''
+  // Appearance Preferences
+  const [theme, setTheme] = useState({
+    primary: '#a855f7', // Purple Neural
+    background: '#020408',
+    glowIntensity: 0.15
   });
 
-  const accs = { 
-    Purple: '#a855f7', Blue: '#3b82f6', Emerald: '#10b981', 
-    Rose: '#f43f5e', Amber: '#f59e0b', Indigo: '#6366f1',
-    Orange: '#f97316', Cyan: '#06b6d4'
-  };
+  const [sessionMetrics, setSessionMetrics] = useState({
+    alpha: 94.2,
+    pnl: 12450,
+    winRate: 74.2,
+    sharpe: 2.1,
+    drawdown: 1.2
+  });
 
-  const theme = {
-    bg: '#07090D',
-    card: glassMode ? 'rgba(15, 20, 28, 0.8)' : '#0F1219',
-    text: '#cbd5e1',
-    border: 'rgba(255,255,255,0.06)',
-    primary: accs[accentColor]
-  };
+  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+  const [trades, setTrades] = useState([]);
 
-  useEffect(() => { 
-    setHasMounted(true); 
-    fetchTrades(); 
-  }, []);
-
-  const fetchTrades = async () => {
-    const { data, error } = await supabase.from('trades').select('*').order('trade_date', { ascending: true });
-    if (data) setTrades(data);
-    if (error) console.error("Supabase Fetch Error:", error);
-  };
-
-  // FILTERED DATA LOGIC
-  const filteredTrades = useMemo(() => {
-    return trades.filter(t => {
-      const assetMatch = filterAsset === 'ALL' || t.symbol === filterAsset;
-      const strategyMatch = filterStrategy === 'ALL' || t.strategy === filterStrategy;
-      return assetMatch && strategyMatch;
-    });
-  }, [trades, filterAsset, filterStrategy]);
-
-  // ADVANCED ANALYTICS ENGINE (AI LOGIC)
-  const stats = useMemo(() => {
-    if (!filteredTrades.length) return { totalPnL: 0, winRate: 0, pf: '0.00', avgWin: 0, expectancy: 0 };
-    const wins = filteredTrades.filter(tr => Number(tr.pnl) > 0);
-    const losses = filteredTrades.filter(tr => Number(tr.pnl) < 0);
-    const totalPnL = filteredTrades.reduce((acc, tr) => acc + Number(tr.pnl), 0);
-    const grossProfit = wins.reduce((acc, tr) => acc + Number(tr.pnl), 0);
-    const grossLoss = Math.abs(losses.reduce((acc, tr) => acc + Number(tr.pnl), 0));
-    
-    return {
-        totalPnL: totalPnL.toFixed(2), 
-      winRate: ((wins.length / filteredTrades.length) * 100).toFixed(1), 
-      pf: grossLoss === 0 ? grossProfit.toFixed(2) : (grossProfit / grossLoss).toFixed(2),
-      avgWin: (totalPnL / filteredTrades.length).toFixed(2),
-      expectancy: (totalPnL / filteredTrades.length / 100).toFixed(2), // R-unit simulation
-      winCount: wins.length,
-      lossCount: losses.length,
-      beCount: filteredTrades.filter(tr => Number(tr.pnl) === 0).length
+  // --- 2. ADAPTIVE SHELL LOGIC ---
+  useEffect(() => {
+    setHasMounted(true);
+    const handleMouseMove = (e) => {
+      setMousePos({ 
+        x: (e.clientX / window.innerWidth) * 100, 
+        y: (e.clientY / window.innerHeight) * 100 
+      });
     };
-  }, [filteredTrades]);
-
-  // NEURAL SUGGESTIONS (AI EFFICIENCY)
-  const aiInsights = useMemo(() => {
-    if (filteredTrades.length < 5) return ["Insufficient data for neural mapping. Log more executions."];
-    const insights = [];
-    const bestStrategy = [...new Set(filteredTrades.map(t => t.strategy))]
-      .map(s => ({ name: s, pnl: filteredTrades.filter(t => t.strategy === s).reduce((a, b) => a + Number(b.pnl), 0) }))
-      .sort((a, b) => b.pnl - a.pnl)[0];
-
-      insights.push(`Maximum alpha detected in ${bestStrategy.name} setups.`);
-    if (stats.winRate > 60) insights.push("Current edge is highly consistent. Consider increasing size by 0.5%.");
-    if (stats.pf < 1.5) insights.push("Profit factor sub-optimal. Review exit quality on winning trades.");
-    return insights;
-  }, [filteredTrades, stats]);
+    window.addEventListener('mousemove', handleMouseMove);
+    return () => window.removeEventListener('mousemove', handleMouseMove);
+  }, []);
 
   if (!hasMounted) return null;
 
   return (
-    <main className="min-h-screen p-6 md:p-12 transition-all duration-700 font-sans selection:bg-purple-500/30" style={{ backgroundColor: theme.bg, color: theme.text }}>
-      
-      {/* HEADER & NAV */}
-      <nav className="flex flex-col lg:flex-row justify-between items-center mb-12 gap-8">
-        <div className="flex items-center gap-6 group cursor-pointer">
-          <div style={{ backgroundColor: theme.primary }} className="w-16 h-16 rounded-[22px] flex items-center justify-center shadow-[0_0_50px_-10px] shadow-current group-hover:rotate-12 transition-all duration-500">
-            <Zap className="text-white fill-white" size={32} />
+    <div className="min-h-screen bg-[#020408] text-white font-sans selection:bg-purple-500/30 overflow-x-hidden relative">
+      {/* Neural Background Engine */}
+      <div 
+        className="fixed inset-0 pointer-events-none opacity-20 transition-opacity duration-1000"
+        style={{ 
+          background: `radial-gradient(600px circle at ${mousePos.x}% ${mousePos.y}%, ${theme.primary}25, transparent 80%)` 
+        }}
+      />
+      <div className="fixed inset-0 pointer-events-none bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 mix-blend-overlay" />
+
+<div className="relative z-10 flex h-screen overflow-hidden">
+  
+  {/* ADAPTIVE SIDEBAR (Sliver to Expanded) */}
+  <aside 
+    onMouseEnter={() => setIsSidebarExpanded(true)}
+    onMouseLeave={() => setIsSidebarExpanded(false)}
+    className={`flex flex-col border-r border-white/5 bg-black/40 backdrop-blur-3xl transition-all duration-500 z-50 ${
+      isSidebarExpanded ? 'w-80' : 'w-24'
+    }`}
+  >
+    <div className="flex flex-col h-full py-10 px-6">
+            <div className="flex items-center gap-4 mb-16 overflow-hidden">
+              <div className="min-w-[48px] h-12 rounded-2xl bg-purple-500 flex items-center justify-center shadow-[0_0_30px_rgba(168,85,247,0.4)]">
+                <Zap size={24} className="text-white fill-white" />
+              </div>
+              <div className={`transition-opacity duration-300 ${isSidebarExpanded ? 'opacity-100' : 'opacity-0'}`}>
+                <h1 className="text-xl font-black italic tracking-tighter leading-none">TERMINAL</h1>
+                <p className="text-[7px] font-bold text-purple-500 tracking-[0.4em] mt-1 uppercase">Neural Elite</p>
+              </div>
             </div>
-          <div className="flex flex-col">
-            <h1 className="text-5xl font-[950] italic uppercase tracking-tighter leading-[0.75] flex flex-col">
-              <span className="text-white">TRADE</span>
-              <span style={{ color: theme.primary }} className="drop-shadow-[0_0_15px_rgba(255,255,255,0.1)]">SYLLA</span>
-            </h1>
-            <p className="text-[9px] font-black opacity-30 tracking-[0.5em] uppercase mt-3 flex items-center gap-2">
-              <span className="w-8 h-[1px] bg-white/20" /> Neural Terminal v1.0
-            </p>
+
+            <nav className="space-y-4 flex-1">
+              {[
+                { id: 'DASHBOARD', icon: <LayoutDashboard size={20}/>, label: 'Dashboard' },
+                { id: 'SYLLEDGE', icon: <Terminal size={20}/>, label: 'Sylledge AI' },
+                { id: 'BACKTEST', icon: <Cpu size={20}/>, label: 'AI Backtesting' },
+                { id: 'PLAYBOOK', icon: <Brain size={20}/>, label: 'Playbook' },
+                { id: 'SETTINGS', icon: <Settings size={20}/>, label: 'User Space' },
+              ].map((item) => (
+                <button
+                  key={item.id}
+                  onClick={() => setActiveTab(item.id)}
+                  className={`w-full flex items-center gap-6 p-4 rounded-2xl transition-all relative group ${
+                    activeTab === item.id ? 'bg-white/5 text-purple-500' : 'text-white/40 hover:text-white'
+                  }`}
+                >
+                  <div className="min-w-[20px]">{item.icon}</div>
+                  <span className={`text-[10px] font-black tracking-[0.2em] uppercase transition-opacity duration-300 ${
+                    isSidebarExpanded ? 'opacity-100' : 'opacity-0 pointer-events-none'
+                  }`}>
+                    {item.label}
+                  </span>
+                </button>
+              ))}
+            </nav>
+
+            {/* FREE TIER AD ZONE */}
+            {userTier === 'FREE' && isSidebarExpanded && (
+              <div className="mt-4 p-4 rounded-2xl bg-gradient-to-br from-purple-500/10 to-blue-500/10 border border-white/5">
+                <p className="text-[8px] font-bold text-white/30 uppercase mb-2">Sponsored Insight</p>
+                <div className="h-20 bg-white/5 rounded-lg flex items-center justify-center text-[10px] text-white/20 italic">
+                  Premium Alpha Waiting...
+                </div>
+              </div>
+            )}
           </div>
-        </div>
-
-        <div className="flex gap-2 p-1.5 bg-white/5 rounded-[28px] border border-white/5 backdrop-blur-2xl">
-          {['dashboard', 'edge', 'sync', 'settings'].map(tab => (
-            <button 
-              key={tab}
-              onClick={() => setActiveTab(tab)} 
-              className={`px-10 py-4 rounded-[22px] text-[11px] font-black uppercase tracking-widest transition-all ${
-                activeTab === tab ? 'bg-white text-black shadow-2xl scale-105' : 'opacity-30 hover:opacity-100 hover:bg-white/5'
-              }`}
-            >
-              {tab === 'dashboard' ? 'Terminal' : tab === 'edge' ? 'Playbook' : tab}
-            </button>
-          ))}
-        </div>
-
-        <button 
-          onClick={() => setIsModalOpen(true)}
-          style={{ backgroundColor: theme.primary }}
-          className="px-10 py-5 rounded-[22px] font-black text-[11px] text-white uppercase tracking-[0.25em] hover:scale-105 active:scale-95 transition-all hidden xl:block shadow-xl shadow-current/20"
-        >
-          New Execution +
-        </button>
-        </nav>
-
-      {/* DASHBOARD TAB */}
-      {activeTab === 'dashboard' && (
-        <div className="space-y-10 animate-in fade-in slide-in-from-bottom-5 duration-1000">
+        </aside>
+        {/* MAIN CONTENT AREA */}
+        <main className="flex-1 flex flex-col min-w-0 overflow-hidden relative">
           
-          {/* FILTERS BAR */}
-          <div className="flex flex-wrap gap-4 p-6 bg-white/[0.02] border border-white/5 rounded-[30px] items-center">
-            <div className="flex items-center gap-3 px-4 py-2 bg-white/5 rounded-xl border border-white/5">
-              <Filter size={14} className="opacity-40" />
-              <select 
-                className="bg-transparent text-[10px] font-black uppercase outline-none cursor-pointer"
-                value={filterAsset}
-                onChange={(e) => setFilterAsset(e.target.value)}
-              >
-                <option value="ALL">All Assets</option>
-                {[...new Set(trades.map(t => t.symbol))].map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
-            </div>
-            <div className="flex items-center gap-3 px-4 py-2 bg-white/5 rounded-xl border border-white/5">
-              <Brain size={14} className="opacity-40" />
-              <select 
-                className="bg-transparent text-[10px] font-black uppercase outline-none cursor-pointer"
-                value={filterStrategy}
-                onChange={(e) => setFilterStrategy(e.target.value)}
-              >
-                <option value="ALL">All Strategies</option>
-                {[...new Set(trades.map(t => t.strategy))].map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
-            </div>
-          </div>
-
-          {/* TOP STATS */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            <StatBox label="Net Alpha" value={`$${stats.totalPnL}`} theme={theme} radius={borderRadius} color={stats.totalPnL >= 0 ? "text-emerald-400" : "text-rose-500"} icon={<TrendingUp size={16}/>} />
-            <StatBox label="Success Rate" value={`${stats.winRate}%`} theme={theme} radius={borderRadius} icon={<Target size={16}/>} />
-            <StatBox label="Profit Factor" value={stats.pf} theme={theme} radius={borderRadius} color="text-purple-500" icon={<Activity size={16}/>} />
-            <StatBox label="Avg Expectancy" value={`$${stats.avgWin}`} theme={theme} radius={borderRadius} icon={<ArrowUpRight size={16}/>} />
-          </div>
-
-          <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
-            {/* PERFORMANCE CURVE */}
-            <div style={{ backgroundColor: theme.card, borderColor: theme.border, borderRadius }} className="p-10 border shadow-2xl xl:col-span-2 overflow-hidden group relative">
-              <div className="flex justify-between items-center mb-10">
-                <div>
-                  <h3 className="text-2xl font-[950] italic uppercase tracking-tighter flex items-center gap-3">
-                    <Activity className="text-emerald-500" size={20}/> Neural Equity
-                  </h3>
-                  <p className="text-[9px] font-black opacity-20 uppercase tracking-[0.3em] mt-1">Institutional Performance Flow</p>
-                </div>
-                </div>
-              <div className="h-[450px] w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={filteredTrades.length > 0 ? filteredTrades : [{trade_date: '0', pnl: 0}]}>
-                    <defs>
-                      <linearGradient id="colorPnL" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor={theme.primary} stopOpacity={0.4}/>
-                        <stop offset="95%" stopColor={theme.primary} stopOpacity={0}/>
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.03)" vertical={false} />
-                    <XAxis dataKey="trade_date" axisLine={false} tickLine={false} tick={{fontSize: 10, fontWeight: 900, opacity: 0.3}} />
-                    <YAxis axisLine={false} tickLine={false} tick={{fontSize: 10, fontWeight: 900, opacity: 0.3}} />
-                    <Tooltip contentStyle={{ backgroundColor: '#0F1219', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '20px', fontWeight: '900', fontSize: '12px' }} itemStyle={{ color: theme.primary }} />
-                    <Area type="monotone" dataKey="pnl" stroke={theme.primary} strokeWidth={6} fillOpacity={1} fill="url(#colorPnL)" />
-                  </AreaChart>
-                </ResponsiveContainer>
-                </div>
-            </div>
-
-            {/* AI INSIGHTS & ACTIVITY */}
-            <div className="space-y-8">
-              <div style={{ backgroundColor: theme.card, borderColor: theme.border, borderRadius }} className="p-8 border shadow-xl bg-gradient-to-br from-white/[0.03] to-transparent relative overflow-hidden">
-                <div className="absolute -right-4 -top-4 opacity-5 rotate-12"><Brain size={120}/></div>
-                <h4 className="text-[11px] font-[950] uppercase opacity-40 mb-8 flex items-center gap-2"><Sparkles size={16} className="text-amber-400"/> Neural Suggestions</h4>
-                <div className="space-y-4 relative z-10">
-                  {aiInsights.map((text, i) => (
-                    <div key={i} className="p-6 rounded-[25px] bg-white/5 border border-white/5 hover:border-white/10 transition-all cursor-default">
-                      <p className="text-[9px] font-black text-purple-400 mb-2 uppercase tracking-widest">Logic Node 0{i+1}</p>
-                      <p className="text-xs font-bold opacity-80 italic leading-relaxed">"{text}"</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div style={{ backgroundColor: theme.card, borderColor: theme.border, borderRadius }} className="p-8 border shadow-xl flex-1">
-                <div className="flex justify-between items-center mb-8">
-                  <h4 className="text-[11px] font-[950] uppercase opacity-40">Recent Activity</h4>
-                  <History size={16} className="opacity-20"/>
-                </div>
-                <div className="space-y-4">
-                  {filteredTrades.slice(-3).reverse().map((trade, i) => (
-                    <div key={i} className="flex justify-between items-center p-5 rounded-[22px] bg-white/[0.02] border border-white/5 hover:bg-white/[0.04] transition-all">
-                      <div className="flex items-center gap-4">
-                        <div className={`w-2 h-8 rounded-full ${Number(trade.pnl) >= 0 ? 'bg-emerald-500' : 'bg-rose-500'}`} />
-                        <div>
-                          <p className="text-[11px] font-[950] italic uppercase">{trade.symbol}</p>
-                          <p className="text-[8px] opacity-30 font-black uppercase">{trade.trade_date}</p>
-                        </div>
-                      </div>
-                      <p className={`text-sm font-[950] ${Number(trade.pnl) >= 0 ? 'text-emerald-400' : 'text-rose-500'}`}>
-                        {Number(trade.pnl) >= 0 ? '+' : ''}${trade.pnl}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* PERFORMANCE CALENDAR LEDGER */}
-          <div style={{ backgroundColor: theme.card, borderColor: theme.border, borderRadius }} className="p-10 border shadow-2xl">
-            <div className="flex justify-between items-center mb-10">
+          {/* TOP NAVIGATION / HEADER */}
+          <header className="h-24 border-b border-white/5 flex items-center justify-between px-10 bg-black/20 backdrop-blur-md relative z-20">
+            <div className="flex items-center gap-8">
               <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                  <p className="text-[10px] font-black uppercase tracking-[0.3em] text-white/50">Neural Node Linked</p>
+                </div>
+                <h2 className="text-sm font-black uppercase tracking-widest italic">{activeTab}</h2>
               </div>
-              <h3 className="text-2xl font-[950] italic uppercase tracking-tighter flex items-center gap-3">
-                  <Calendar className="text-blue-500" size={20}/> Alpha Ledger
-                </h3>
-                <p className="text-[9px] font-black opacity-20 uppercase tracking-[0.3em] mt-1">Daily Performance Heatmap</p>
-              </div>
-              <div className="flex gap-4 text-[10px] font-black uppercase opacity-40">
-                <div className="flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-emerald-500"/> Wins: {stats.winCount}</div>
-                <div className="flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-rose-500"/> Losses: {stats.lossCount}</div>
+
+              <div className="h-8 w-[1px] bg-white/10" />
+              
+              <div className="flex items-center gap-6">
+                <button 
+                  onClick={() => setIsPrivacyMode(!isPrivacyMode)}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-xl border transition-all ${
+                    isPrivacyMode ? 'bg-purple-500/20 border-purple-500 text-purple-400' : 'bg-white/5 border-white/10 text-white/40'
+                  }`}
+                >
+                  {isPrivacyMode ? <Lock size={14} /> : <Globe size={14} />}
+                  <span className="text-[9px] font-black uppercase tracking-tighter">Ghost Mode</span>
+                </button>
               </div>
             </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
-              {Array.from({ length: 28 }).map((_, i) => {
-                const date = new Date();
-                date.setDate(date.getDate() - (27 - i));
-                const dateStr = date.toISOString().split('T')[0];
-                const dayTrades = trades.filter(t => t.trade_date === dateStr);
-                const dayPnL = dayTrades.reduce((acc, t) => acc + Number(t.pnl), 0);
-                const dWins = dayTrades.filter(t => Number(t.pnl) > 0).length;
-                const dLosses = dayTrades.filter(t => Number(t.pnl) < 0).length;
+            <div className="flex items-center gap-6">
+              <div className="hidden xl:flex items-center gap-4 px-6 py-2 bg-white/5 rounded-2xl border border-white/5">
+                <div className="text-right">
+                  <p className="text-[8px] font-bold text-white/20 uppercase tracking-tighter">Latency</p>
+                  <p className="text-[10px] font-black text-purple-500">14ms</p>
+                </div>
+                <Activity size={16} className="text-purple-500" />
+              </div>
 
-                return (
-                  <div key={i} className="aspect-square rounded-[22px] border border-white/5 p-4 flex flex-col justify-between group hover:bg-white/[0.04] transition-all relative overflow-hidden"
-                       style={{ borderTop: dayTrades.length > 0 ? `5px solid ${dayPnL >= 0 ? '#10b981' : '#f43f5e'}` : '' }}>
-                    <span className="text-[10px] font-black opacity-20">{date.getDate()} {date.toLocaleString('default', { month: 'short' })}</span>
-                    {dayTrades.length > 0 ? (
-                      <div>
-                        <p className={`text-xs font-[950] ${dayPnL >= 0 ? 'text-emerald-400' : 'text-rose-500'}`}>
-                          {dayPnL >= 0 ? '+' : ''}${Math.abs(dayPnL).toFixed(0)}
+              {/* FLOATING ACTION TRIGGER - TOP HEADER VERSION */}
+              <button
+              onClick={() => setIsLogModalOpen(true)}
+              className="group relative flex items-center gap-3 px-8 py-4 bg-white text-black rounded-2xl transition-all hover:scale-105 active:scale-95 shadow-[0_0_30px_rgba(255,255,255,0.2)]"
+            >
+              <Plus size={18} strokeWidth={3} />
+              <span className="text-[10px] font-black uppercase tracking-[0.2em]">New Position</span>
+            </button>
+            
+            <div className="w-12 h-12 rounded-2xl border border-white/10 bg-gradient-to-br from-white/10 to-transparent p-[1px]">
+              <div className="w-full h-full rounded-2xl bg-[#020408] flex items-center justify-center overflow-hidden">
+                 <User size={20} className="text-white/40" />
+              </div>
+            </div>
+          </div>
+        </header>
+
+        {/* DYNAMIC VIEWPORT */}
+        <div className="flex-1 overflow-y-auto scrollbar-hide p-10 custom-scroll">
+            <div className="max-w-[1600px] mx-auto space-y-10">
+              {/* Tab-specific content will be injected here in Part 4 */}
+              {activeTab === 'DASHBOARD' && (
+                <>
+                  {/* KPI GRID */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                    {[
+                      { label: 'Neural Alpha', value: sessionMetrics.alpha + '%', sub: '+2.4% vs Bench', icon: <Zap size={16}/>, color: 'text-purple-500' },
+                      { label: 'Session PnL', value: '$' + sessionMetrics.pnl.toLocaleString(), sub: 'Today', icon: <TrendingUp size={16}/>, color: 'text-emerald-500' },
+                      { label: 'Win Probability', value: sessionMetrics.winRate + '%', sub: 'Calculated', icon: <Target size={16}/>, color: 'text-blue-500' },
+                      { label: 'Max Drawdown', value: sessionMetrics.drawdown + '%', sub: 'Last 30d', icon: <Activity size={16}/>, color: 'text-rose-500' }
+                    ].map((card, i) => (
+                      <div key={i} className="group relative bg-white/5 border border-white/5 p-8 rounded-[32px] overflow-hidden hover:border-white/10 transition-all duration-500">
+                        <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:opacity-20 transition-opacity">
+                          {card.icon}
+                        </div>
+
+                        <p className="text-[10px] font-black uppercase tracking-[0.3em] text-white/30 mb-4">{card.label}</p>
+                        
+                        <div className={`text-3xl font-black italic tracking-tighter mb-2 transition-all duration-700 ${isPrivacyMode ? 'blur-md' : 'blur-0'} ${card.color}`}>
+                          {card.value}
+                        </div>
+                        
+                        <div className="flex items-center gap-2">
+                          <span className="text-[9px] font-bold text-white/50 uppercase">{card.sub}</span>
+                          <div className="h-[1px] flex-1 bg-white/5" />
+                          <div className="w-12 h-4 rounded-full bg-white/5 overflow-hidden relative">
+                            <div className={`absolute inset-0 bg-gradient-to-r from-transparent via-current opacity-20 animate-shimmer ${card.color}`} />
+                          </div>
+                        </div>
+
+                        {/* Hover Glow Effect */}
+                        <div className="absolute inset-0 bg-gradient-to-br from-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* MAIN CHARTING SECTION */}
+                  <div className="grid grid-cols-1 xl:grid-cols-3 gap-10">
+                    <div className="xl:col-span-2 bg-white/5 border border-white/5 p-10 rounded-[40px] relative overflow-hidden h-[500px]">
+                      <div className="flex items-center justify-between mb-10">
+                        <div>
+                          <h3 className="text-sm font-black uppercase tracking-widest mb-1">Cumulative Equity Curve</h3>
+                          <p className="text-[10px] font-bold text-white/20 uppercase tracking-tighter">Real-time Performance Sync</p>
+                        </div>
+                        <div className="flex gap-2">
+                          {['1D', '1W', '1M', 'ALL'].map(t => (
+                            <button key={t} className="px-4 py-2 rounded-xl bg-white/5 text-[9px] font-black hover:bg-white/10 transition-colors">{t}</button>
+                            ))}
+                          </div>
+                        </div>
+                        
+                        <div className={`w-full h-full pb-16 transition-all duration-1000 ${isPrivacyMode ? 'blur-2xl opacity-20' : 'opacity-100'}`}>
+                          <ResponsiveContainer width="100%" height="100%">
+                            <AreaChart data={[
+                              {t: '08:00', v: 10000}, {t: '10:00', v: 10500}, {t: '12:00', v: 10200}, 
+                              {t: '14:00', v: 11800}, {t: '16:00', v: 12450}
+                            ]}>
+                              <defs>
+                                <linearGradient id="colorPnL" x1="0" y1="0" x2="0" y2="1">
+                                  <stop offset="5%" stopColor={theme.primary} stopOpacity={0.3}/>
+                                  <stop offset="95%" stopColor={theme.primary} stopOpacity={0}/>
+                                </linearGradient>
+                                </defs>
+                            <XAxis dataKey="t" hide />
+                            <YAxis hide domain={['dataMin - 100', 'dataMax + 100']} />
+                            <Tooltip 
+                              contentStyle={{ backgroundColor: '#0A0C10', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '16px' }}
+                              itemStyle={{ color: '#fff', fontSize: '10px', fontWeight: '900' }}
+                            />
+                            <Area type="monotone" dataKey="v" stroke={theme.primary} strokeWidth={4} fillOpacity={1} fill="url(#colorPnL)" />
+                          </AreaChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
+
+                    <div className="space-y-10">
+                      {/* SYLLEDGE PREVIEW CARD */}
+                      <div className="bg-gradient-to-br from-purple-500 to-blue-600 p-10 rounded-[40px] relative overflow-hidden group shadow-[0_20px_50px_rgba(168,85,247,0.2)]">
+                        <Brain className="absolute -right-4 -bottom-4 text-white/10 w-40 h-40 group-hover:scale-110 transition-transform duration-700" />
+                        <h3 className="text-xl font-black italic tracking-tighter text-white mb-2 uppercase">SYLLEDGE AI</h3>
+                        <p className="text-[10px] font-bold text-white/70 uppercase tracking-widest leading-relaxed mb-6">
+                          Neural pattern recognition detects a 84% probability of continuation in your current setup.
                         </p>
-                        <div className="flex gap-2 mt-2">
+                        <button className="px-6 py-3 bg-white text-black text-[9px] font-black uppercase rounded-xl tracking-widest shadow-xl">Analyze Alpha</button>
+                      </div>
+                      
+                      {/* MORE SMALL METRICS CARDS WOULD GO HERE */}
+                    </div>
+                  </div>
+                </>
+              )}
+              {activeTab === 'SYLLEDGE' && (
+                <div className="space-y-8 animate-in fade-in duration-700">
+                  {/* SYLLEDGE HEADER & CONTROLS */}
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+                    <div>
+                      <h3 className="text-2xl font-black italic tracking-tighter uppercase mb-2">Neural Ledger <span className="text-purple-500">v4.0</span></h3>
+                      <p className="text-[10px] font-bold text-white/30 uppercase tracking-[0.2em]">Analyzing 1,240 historical data points across 4 platforms</p>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <div className="flex bg-white/5 p-1 rounded-xl border border-white/5">
+                        <button className="px-4 py-2 bg-white/10 rounded-lg text-[9px] font-black uppercase tracking-widest">MT5 Sync</button>
+                        <button className="px-4 py-2 text-white/30 text-[9px] font-black uppercase tracking-widest hover:text-white transition-colors">Broker API</button>
+                      </div>
+                      <button className="p-3 bg-white/5 rounded-xl border border-white/10 hover:bg-white/10 transition-all">
+                        <Download size={18} />
+                      </button>
+                      </div>
+                  </div>
+
+                  {/* DATA MINE TABLE */}
+                  <div className="bg-white/5 border border-white/5 rounded-[40px] overflow-hidden backdrop-blur-sm">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left border-collapse">
+                        <thead>
+                          <tr className="border-b border-white/5">
+                            {['Status', 'Asset', 'Type', 'Strategy', 'Risk:Reward', 'PnL', 'Neural Insight'].map((head) => (
+                              <th key={head} className="px-8 py-6 text-[9px] font-black uppercase tracking-[0.3em] text-white/20">{head}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-white/5">
+                          {[
+                            { status: 'Synced', pair: 'XAU/USD', type: 'LONG', strategy: 'VWAP Rejection', rr: '1:3.2', pnl: '+ $1,240', insight: 'Optimal Execution' },
+                            { status: 'Manual', pair: 'BTC/USDT', type: 'SHORT', strategy: 'Liquidity Sweep', rr: '1:4.5', pnl: '- $420', insight: 'Slight Early Exit' },
+                            { status: 'Synced', pair: 'EUR/USD', type: 'LONG', strategy: 'Trend Alignment', rr: '1:2.0', pnl: '+ $890', insight: 'High Confidence' },
+                          ].map((trade, i) => (
+                            <tr key={i} className="group hover:bg-white/[0.02] transition-colors cursor-pointer">
+                              <td className="px-8 py-6">
+                                <div className="flex items-center gap-2">
+                                  <div className={`w-1.5 h-1.5 rounded-full ${trade.status === 'Synced' ? 'bg-blue-500' : 'bg-purple-500'}`} />
+                                  <span className="text-[10px] font-black uppercase tracking-widest">{trade.status}</span>
+                                </div>
+                              </td>
+                              <td className="px-8 py-6 text-[11px] font-black italic tracking-tighter">{trade.pair}</td>
+                              <td className="px-8 py-6">
+                                <span className={`text-[9px] font-black px-3 py-1 rounded-md ${trade.type === 'LONG' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-rose-500/10 text-rose-500'}`}>
+                                  {trade.type}
+                                </span>
+                              </td>
+                              <td className="px-8 py-6 text-[10px] font-bold text-white/50">{trade.strategy}</td>
+                              <td className="px-8 py-6 text-[10px] font-black text-white/80">{trade.rr}</td>
+                              <td className={`px-8 py-6 text-[11px] font-black transition-all duration-500 ${isPrivacyMode ? 'blur-md' : 'blur-0'} ${trade.pnl.includes('+') ? 'text-emerald-500' : 'text-rose-500'}`}>
+                                {trade.pnl}
+                              </td>
+                              <td className="px-8 py-6">
+                              <div className="flex items-center gap-3">
+                                  <div className="flex-1 h-1.5 bg-white/5 rounded-full overflow-hidden max-w-[80px]">
+                                    <div className="h-full bg-purple-500 w-[70%]" />
+                                  </div>
+                                  <span className="text-[9px] font-black uppercase text-purple-400">{trade.insight}</span>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    
+                    {/* AD SPACE FOR FREE USERS */}
+                    {userTier === 'FREE' && (
+                      <div className="p-8 border-t border-white/5 bg-white/[0.01] flex items-center justify-between">
+                        <div className="flex items-center gap-4">
+                          <Sparkles className="text-purple-500" size={20} />
+                          <p className="text-[10px] font-bold text-white/40 uppercase tracking-widest">Upgrade to <span className="text-white">Neural Elite</span> for unlimited MT5 History Sync</p>
                         </div>
-                        <span className="text-[8px] font-black text-emerald-500/50">{dWins}W</span>
-                           <span className="text-[8px] font-black text-rose-500/50">{dLosses}L</span>
-                        </div>
-                    ) : (
-                      <div className="flex-1 flex items-center justify-center opacity-5"><Clock size={16}/></div>
+                        <button className="px-6 py-2 bg-purple-500 rounded-xl text-[9px] font-black uppercase tracking-widest shadow-lg shadow-purple-500/20">Upgrade Now</button>
+                      </div>
                     )}
                   </div>
-                );
-              })}
-            </div>
-          </div>
-        
-      )}
+                </div>
+              )}
+              {activeTab === 'BACKTEST' && (
+                <div className="grid grid-cols-1 xl:grid-cols-4 gap-10 animate-in slide-in-from-bottom-10 duration-700">
+                  {/* SIMULATION CONTROLS */}
+                  <div className="xl:col-span-1 space-y-6">
+                    <div className="bg-white/5 border border-white/5 p-8 rounded-[32px] backdrop-blur-md">
+                      <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-purple-500 mb-6">Simulation Engine</h3>
+                      
+                      <div className="space-y-6">
+                        <div>
+                        <label className="text-[9px] font-black uppercase text-white/30 mb-3 block">Time Depth</label>
+                          <select className="w-full bg-black/40 border border-white/10 p-4 rounded-xl text-[10px] font-bold outline-none focus:border-purple-500/50 transition-all">
+                            <option>Last 6 Months</option>
+                            <option>Last 2 Years</option>
+                            <option>Max Available History</option>
+                          </select>
+                        </div>
 
-      {/* EDGE (PLAYBOOK) TAB */}
-      {activeTab === 'edge' && (
-        <div className="animate-in fade-in zoom-in-95 duration-700 space-y-10">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          <div style={{ backgroundColor: theme.card, borderColor: theme.border, borderRadius }} className="p-10 border shadow-2xl lg:col-span-2 relative overflow-hidden group">
-            <div className="absolute top-0 right-0 p-12 opacity-5 group-hover:rotate-12 transition-all duration-1000"><Target size={140}/></div>
-            <h3 className="text-3xl font-[950] italic uppercase tracking-tighter mb-10 flex items-center gap-4">
-              <ShieldCheck className="text-emerald-500" size={32} /> Playbook Efficiency
-            </h3>
+                        <div>
+                        <label className="text-[9px] font-black uppercase text-white/30 mb-3 block">Strategy Logic</label>
+                          <textarea 
+                            className="w-full h-32 bg-black/40 border border-white/10 p-4 rounded-xl text-[10px] font-bold outline-none focus:border-purple-500/50 resize-none"
+                            placeholder="Explain your strategy... (e.g., FVG entries on 5m chart during London Session)"
+                          />
+                        </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
-              <div className="space-y-8">
-                {[...new Set(trades.map(t => t.strategy))].map((strat, i) => {
-                  const stratTrades = trades.filter(t => t.strategy === strat);
-                  const winR = ((stratTrades.filter(t => Number(t.pnl) > 0).length / stratTrades.length) * 100).toFixed(1);
-                  return (
-                    <div key={strat} className="border-l-4 p-6 hover:bg-white/5 transition-all" style={{ borderColor: i % 2 === 0 ? theme.primary : '#10b981' }}>
-                      <p className="text-[11px] font-[950] opacity-30 uppercase tracking-[0.2em]">{i === 0 ? 'Master Setup' : 'Secondary Setup'}</p>
-                      <p className="text-2xl font-[950] italic uppercase mt-2">{strat}</p>
-                      <div className="flex items-center gap-6 mt-4">
-                      <span className="text-3xl font-[950]" style={{ color: i % 2 === 0 ? theme.primary : '#10b981' }}>{winR}%</span>
-                          <div className="h-1.5 flex-1 bg-white/10 rounded-full overflow-hidden">
-                            <div className="h-full" style={{ width: `${winR}%`, backgroundColor: i % 2 === 0 ? theme.primary : '#10b981' }} />
+                        <button className="w-full py-4 bg-white text-black rounded-xl text-[10px] font-black uppercase tracking-widest shadow-[0_0_20px_rgba(255,255,255,0.1)] hover:scale-[1.02] active:scale-95 transition-all">
+                          Run Neural Sim
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="bg-emerald-500/5 border border-emerald-500/10 p-6 rounded-[24px]">
+                      <div className="flex items-center gap-3 mb-4">
+                        <Sparkles size={16} className="text-emerald-500" />
+                        <span className="text-[10px] font-black uppercase text-emerald-500">Growth Insight</span>
+                      </div>
+                      <p className="text-[10px] font-medium text-emerald-500/80 leading-relaxed">
+                        Based on your SYLLEDGE data, tightening your Stop Loss by 2 pips on XAU/USD increases profitability by 12.4% annually.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* SIMULATION RESULTS */}
+                  <div className="xl:col-span-3 space-y-10">
+                    <div className="bg-white/5 border border-white/5 p-10 rounded-[40px] h-[500px] relative overflow-hidden">
+                      <div className="absolute top-10 right-10 flex gap-4">
+                        <div className="text-right">
+                          <p className="text-[8px] font-bold text-white/20 uppercase">Expected Return</p>
+                          <p className="text-xl font-black italic text-emerald-500">+142.8%</p>
+                        </div>
+                      </div>
+                      
+                      <h3 className="text-sm font-black uppercase tracking-widest mb-10">Probabilistic Outcome Curve</h3>
+                      
+                      <div className="w-full h-full pb-20">
+                      <ResponsiveContainer width="100%" height="100%">
+                          <LineChart data={[
+                            {m: 1, v: 100}, {m: 2, v: 120}, {m: 3, v: 115}, {m: 4, v: 160}, {m: 5, v: 190}, {m: 6, v: 242}
+                          ]}>
+                            <XAxis dataKey="m" hide />
+                            <YAxis hide />
+                            <Tooltip 
+                              contentStyle={{ backgroundColor: '#0A0C10', border: 'none', borderRadius: '12px' }}
+                              itemStyle={{ color: '#a855f7', fontSize: '10px', fontWeight: '900' }}
+                            />
+                            <Line type="monotone" dataKey="v" stroke={theme.primary} strokeWidth={3} dot={{ fill: theme.primary, r: 4 }} />
+                            <Line type="monotone" dataKey="v" stroke={theme.primary} strokeWidth={12} opacity={0.1} />
+                          </LineChart>
+                        </ResponsiveContainer>
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-6">
+                      {[
+                        { l: 'Simulated Trades', v: '412' },
+                        { l: 'Max Drawdown', v: '8.4%' },
+                        { l: 'Profit Factor', v: '2.84' }
+                      ].map((s, i) => (
+                        <div key={i} className="bg-white/5 border border-white/5 p-6 rounded-3xl text-center">
+                          <p className="text-[8px] font-bold text-white/30 uppercase tracking-widest mb-2">{s.l}</p>
+                          <p className="text-lg font-black italic tracking-tighter">{s.v}</p>
+                        </div>
+                      ))}
+                    </div>
+                    </div>
+                </div>
+              )}
+
+            {activeTab === 'PLAYBOOK' && (
+                <div className="space-y-10 animate-in fade-in zoom-in-95 duration-700">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-2xl font-black italic tracking-tighter uppercase mb-2">Neural Playbook</h3>
+                      <p className="text-[10px] font-bold text-white/30 uppercase tracking-[0.2em]">Validated Edge & Execution Framework</p>
+                    </div>
+                    <button className="flex items-center gap-2 px-6 py-3 bg-white/5 border border-white/10 rounded-xl text-[9px] font-black uppercase hover:bg-white/10 transition-all">
+                      <Plus size={14} /> New Strategy Pattern
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                    {[
+                      { title: 'London Open Sweep', rate: '68%', grade: 'A+', setups: 142, tags: ['Liquidity', 'Volatility'] },
+                      { title: 'VWAP Mean Reversion', rate: '54%', grade: 'B', setups: 89, tags: ['Trend', 'Volume'] },
+                      { title: 'FVG Displacement', rate: '72%', grade: 'S', setups: 64, tags: ['Institutional', 'Impulse'] }
+                    ].map((item, i) => (
+                      <div key={i} className="group relative bg-white/5 border border-white/5 p-8 rounded-[40px] hover:border-purple-500/30 transition-all duration-500 overflow-hidden">
+                        <div className="flex justify-between items-start mb-8">
+                          <div className={`text-4xl font-black italic tracking-tighter ${item.grade === 'S' ? 'text-purple-500' : 'text-white/20'}`}>
+                            {item.grade}
+                          </div>
+                          <div className="text-right">
+                          <p className="text-[8px] font-bold text-white/20 uppercase">Historical Win Rate</p>
+                            <p className="text-lg font-black italic text-emerald-500">{item.rate}</p>
+                          </div>
+                        </div>
+                        
+                        <h4 className="text-sm font-black uppercase tracking-widest mb-4 group-hover:text-purple-400 transition-colors">{item.title}</h4>
+                        
+                        <div className="flex gap-2 mb-8">
+                          {item.tags.map(tag => (
+                            <span key={tag} className="px-3 py-1 bg-white/5 rounded-md text-[8px] font-black uppercase tracking-tighter text-white/40">{tag}</span>
+                          ))}
+                        </div>
+
+                        <div className="space-y-3 mb-8">
+                        <p className="text-[9px] font-black uppercase text-white/20 mb-2">Execution Checklist</p>
+                          {['H4 Trend Alignment', 'M15 Liquidity Grab', 'Displacement Entry'].map((step, j) => (
+                            <div key={j} className="flex items-center gap-3">
+                              <div className="w-4 h-4 rounded border border-white/10 flex items-center justify-center">
+                                <CheckCircle2 size={10} className="text-purple-500 opacity-0 group-hover:opacity-100 transition-opacity" />
+                              </div>
+                              <span className="text-[10px] font-bold text-white/60">{step}</span>
+                            </div>
+                          ))}
+                        </div>
+
+                        <div className="h-32 bg-black/40 rounded-2xl border border-white/5 flex items-center justify-center group-hover:border-purple-500/20 transition-all">
+                          <ImageIcon size={24} className="text-white/5" />
+                        </div>
+                      </div>
+                    ))}
+                    </div>
+
+                    {/* INTERACTIVE RULESET */}
+                  <div className="bg-white/5 border border-white/5 p-10 rounded-[40px] flex items-center justify-between">
+                    <div className="flex gap-10">
+                      <div>
+                        <p className="text-[8px] font-bold text-white/20 uppercase mb-2">Total Edge Data</p>
+                        <p className="text-xl font-black italic uppercase">4.2 TB <span className="text-[10px] text-purple-500 not-italic">Scanned</span></p>
+                      </div>
+                      <div className="h-10 w-[1px] bg-white/5" />
+                      <div>
+                        <p className="text-[8px] font-bold text-white/20 uppercase mb-2">Compliance Score</p>
+                        <p className="text-xl font-black italic uppercase text-blue-500">92%</p>
+                      </div>
+                    </div>
+                    <div className="flex -space-x-3">
+                    {[1, 2, 3, 4].map(n => (
+                        <div key={n} className="w-10 h-10 rounded-full border-2 border-[#020408] bg-white/10 overflow-hidden" />
+                      ))}
+                      <div className="w-10 h-10 rounded-full border-2 border-[#020408] bg-purple-500 flex items-center justify-center text-[10px] font-black italic">
+                        +12
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {activeTab === 'SETTINGS' && (
+                <div className="grid grid-cols-1 lg:grid-cols-4 gap-10 animate-in slide-in-from-right-10 duration-700">
+                  {/* SETTINGS NAVIGATION */}
+                  <div className="lg:col-span-1 space-y-2">
+                    {['Account', 'Security', 'Billing', 'Appearance', 'Broker Sync'].map((sect) => (
+                      <button key={sect} className="w-full flex items-center justify-between p-4 rounded-xl hover:bg-white/5 transition-all group">
+                        <span className="text-[10px] font-black uppercase tracking-widest text-white/40 group-hover:text-white">{sect}</span>
+                        <ChevronRight size={14} className="text-white/10 group-hover:text-purple-500" />
+                      </button>
+                    ))}
+                    <div className="pt-10">
+                       <button className="w-full flex items-center gap-3 p-4 rounded-xl text-rose-500 hover:bg-rose-500/5 transition-all">
+                        <LogOut size={16} />
+                        <span className="text-[10px] font-black uppercase tracking-widest">Terminate Session</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* SETTINGS CONTENT */}
+                  <div className="lg:col-span-3 space-y-8">
+                    {/* USER PROFILE CARD */}
+                    <div className="bg-white/5 border border-white/5 p-10 rounded-[40px] flex items-center gap-8 relative overflow-hidden">
+                      <div className="w-24 h-24 rounded-3xl bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center text-3xl font-black italic shadow-2xl">
+                        N
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-3 mb-2">
+                          <h3 className="text-xl font-black uppercase italic tracking-tighter">Neural_Trader_01</h3>
+                          <span className="px-3 py-1 bg-purple-500 rounded-md text-[8px] font-black uppercase tracking-tighter shadow-lg shadow-purple-500/20">Elite Tier</span>
+                        </div>
+                        <p className="text-[10px] font-medium text-white/30 mb-6">node_id: x92j-882k-neural-elite</p>
+                        <div className="flex gap-4">
+                          <button className="px-6 py-2 bg-white/5 border border-white/10 rounded-lg text-[9px] font-black uppercase hover:bg-white/10 transition-all">Change Avatar</button>
+                          <button className="px-6 py-2 bg-white/5 border border-white/10 rounded-lg text-[9px] font-black uppercase hover:bg-white/10 transition-all">Edit Info</button>
+                        </div>
+                      </div>
+                      <Fingerprint size={80} className="absolute -right-4 -bottom-4 text-white/5" />
+                    </div>
+
+                    {/* APPEARANCE & PREFERENCES */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                      <div className="bg-white/5 border border-white/5 p-8 rounded-[32px]">
+                        <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-purple-500 mb-6 flex items-center gap-2">
+                          <Palette size={14} /> UI Appearance
+                        </h4>
+                        <div className="space-y-6">
+                          <div>
+                            <p className="text-[9px] font-black text-white/30 uppercase mb-4 tracking-widest">Neural Theme</p>
+                            <div className="flex gap-4">
+                              {['#a855f7', '#10b981', '#3b82f6', '#f43f5e'].map(c => (
+                                <button
+                                key={c} 
+                                  onClick={() => setTheme({...theme, primary: c})}
+                                  className="w-10 h-10 rounded-xl border-2 border-[#020408] shadow-lg transition-transform hover:scale-110 active:scale-90"
+                                  style={{ backgroundColor: c }}
+                                />
+                              ))}
+                            </div>
+                          </div>
+                          <div>
+                             <p className="text-[9px] font-black text-white/30 uppercase mb-4 tracking-widest">Glow Intensity</p>
+                             <input type="range" className="w-full accent-purple-500 opacity-50" />
                           </div>
                         </div>
                       </div>
-                    );
-                  })}
-                </div>
 
-                <div className="bg-white/5 rounded-[35px] p-10 border border-white/5 backdrop-blur-md">
-                  <h4 className="text-[11px] font-[950] opacity-40 uppercase mb-8 flex items-center gap-2"><Cpu size={14}/> Neural Risk Assessment</h4>
-                  <div className="space-y-6">
-                    <MetricRow label="Expectancy" val={`+${stats.expectancy}R`} color="text-emerald-400" />
-                    <MetricRow label="Profit Factor" val={stats.pf} />
-                    <MetricRow label="Max DD" val="-4.2%" color="text-rose-500" />
-                    <MetricRow label="Recovery" val="3.85" />
+                      <div className="bg-white/5 border border-white/5 p-8 rounded-[32px]">
+                        <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-purple-500 mb-6 flex items-center gap-2">
+                          <ShieldCheck size={14} /> Security Hub
+                        </h4>
+                        <div className="space-y-4">
+                          <div className="flex items-center justify-between p-4 bg-black/20 rounded-xl border border-white/5">
+                            <span className="text-[10px] font-bold text-white/60 uppercase">Two-Factor Auth</span>
+                            <div className="w-10 h-5 bg-emerald-500/20 rounded-full flex items-center px-1">
+                              <div className="w-3 h-3 bg-emerald-500 rounded-full" />
+                            </div>
+                          </div>
+                          <div className="flex items-center justify-between p-4 bg-black/20 rounded-xl border border-white/5 opacity-50">
+                            <span className="text-[10px] font-bold text-white/60 uppercase">Hardware Key Sync</span>
+                            <Lock size={12} />
+                          </div>
+                          <button className="w-full py-3 bg-white/5 border border-white/10 rounded-xl text-[9px] font-black uppercase hover:bg-white/10 transition-all">Update API Keys</button>
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                  <button style={{ backgroundColor: theme.primary }} className="w-full mt-10 py-5 rounded-[22px] text-white font-[950] text-[11px] uppercase tracking-[0.3em] hover:scale-105 transition-all shadow-2xl">
-                    Generate Deep Report
-                  </button>
                 </div>
-              </div>
-            </div>
+              )}
+              
 
-            {/* ALPHA DISTRIBUTION */}
-            <div style={{ backgroundColor: theme.card, borderColor: theme.border, borderRadius }} className="p-10 border shadow-xl relative flex flex-col overflow-hidden">
-              <h4 className="text-[11px] font-[950] uppercase opacity-40 mb-10 flex items-center gap-2"><Globe size={16}/> Alpha Distribution</h4>
-              <div className="flex-1 min-h-[350px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                  <Pie
-                      data={[...new Set(trades.map(t => t.symbol))].map(s => ({
-                        name: s,
-                        value: trades.filter(t => t.symbol === s).length
-                      }))}
-                      innerRadius={90}
-                      outerRadius={120}
-                      paddingAngle={10}
-                      dataKey="value"
-                    >
-                      {trades.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={index % 2 === 0 ? theme.primary : '#10b981'} stroke="none" />
-                      ))}
-                    </Pie>
-                    <Tooltip contentStyle={{ backgroundColor: '#0F1219', border: 'none', borderRadius: '15px', fontWeight: '950', fontSize: '10px' }} />
-                  </PieChart>
-                </ResponsiveContainer>
-                </div>
-              <div className="mt-8 space-y-4">
-                 {[...new Set(trades.map(t => t.symbol))].slice(0, 3).map((s, i) => (
-                   <div key={s} className="flex justify-between items-center text-[11px] font-[950] uppercase">
-                     <span className="opacity-40 flex items-center gap-2">
-                       <div className="w-2 h-2 rounded-full" style={{ backgroundColor: i % 2 === 0 ? theme.primary : '#10b981' }} /> {s}
-                     </span>
-                     <span>${trades.filter(t => t.symbol === s).reduce((a, b) => a + Number(b.pnl), 0).toFixed(0)}</span>
-                   </div>
-                 ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* SYNC TAB */}
-      {activeTab === 'sync' && (
-        <div className="max-w-4xl mx-auto animate-in fade-in slide-in-from-bottom-10 duration-700">
-        <div style={{ backgroundColor: theme.card, borderColor: theme.border, borderRadius }} className="p-16 border shadow-2xl relative overflow-hidden">
-          <div className="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-transparent via-blue-500 to-transparent opacity-50" />
+      {/* NEURAL ENTRY MODAL (OVERLAY) */}
+      {isLogModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 sm:p-10">
+          <div className="absolute inset-0 bg-[#020408]/90 backdrop-blur-2xl" onClick={() => setIsLogModalOpen(false)} />
           
-          <div className="flex flex-col md:flex-row justify-between items-start gap-16">
-            <div className="space-y-10 flex-1">
+          <div className="relative w-full max-w-5xl bg-white/5 border border-white/10 rounded-[48px] overflow-hidden shadow-[0_0_100px_rgba(168,85,247,0.1)] flex flex-col max-h-[90vh]">
+            <div className="p-10 border-b border-white/5 flex items-center justify-between bg-white/[0.02]">
               <div>
-                <h3 className="text-4xl font-[950] italic uppercase tracking-tighter flex items-center gap-4">
-                  <Server className="text-blue-500" size={32} /> Terminal Bridge
-                </h3>
-                <p className="text-[11px] font-black opacity-30 uppercase tracking-[0.4em] mt-3">MetaTrader 5 & Broker Gateway</p>
+                <h3 className="text-2xl font-black italic uppercase tracking-tighter">Initialize Position</h3>
+                <p className="text-[10px] font-bold text-white/30 uppercase tracking-[0.2em] mt-1">Manual override enabled • MT5 Link Active</p>
+              </div>
+              <button onClick={() => setIsLogModalOpen(false)} className="p-4 hover:bg-white/5 rounded-full transition-all">
+                <X size={24} />
+              </button>
               </div>
 
-              {/* SYNC MODE TOGGLE */}
-              <div className="flex p-1.5 bg-white/5 rounded-2xl border border-white/5 w-fit">
-                <button 
-                  onClick={() => setSyncMode('manual')}
-                  className={`px-6 py-2 rounded-xl text-[10px] font-[950] uppercase transition-all ${syncMode === 'manual' ? 'bg-white text-black' : 'opacity-40'}`}
-                >Manual Log</button>
-                <button 
-                  onClick={() => setSyncMode('auto')}
-                  className={`px-6 py-2 rounded-xl text-[10px] font-[950] uppercase transition-all ${syncMode === 'auto' ? 'bg-blue-500 text-white' : 'opacity-40'}`}
-                  >Auto-Sync (API)</button>
-                </div>
-
-                <div className="space-y-5">
-                  <InputBlock label="MetaTrader Login" val={mt5Form.login} set={(v) => setMt5Form({...mt5Form, login: v})} theme={theme} icon={<Fingerprint size={14}/>} />
-                  <InputBlock label="Master Password" val={mt5Form.password} set={(v) => setMt5Form({...mt5Form, password: v})} theme={theme} type="password" icon={<Lock size={14}/>} />
-                  <InputBlock label="Broker Server" val={mt5Form.server} set={(v) => setMt5Form({...mt5Form, server: v})} theme={theme} icon={<Globe size={14}/>} />
-                  {syncMode === 'auto' && <InputBlock label="Broker API Key" val={mt5Form.apiKey} set={(v) => setMt5Form({...mt5Form, apiKey: v})} theme={theme} icon={<Key size={14}/>} />}
-                </div>
-
-                <button 
-                  className="w-full py-6 rounded-[25px] bg-white text-black font-[950] text-[11px] uppercase tracking-[0.3em] hover:scale-[1.02] active:scale-95 transition-all shadow-2xl flex items-center justify-center gap-4"
-                  onClick={() => alert("Establishing Secure Handshake with Broker Terminal...")}
-                >
-                  <Key size={18} /> Authorize Connection
-                </button>
-              </div>
-              <div className="w-full md:w-80 space-y-8">
-                <div className="p-8 rounded-[40px] border border-white/5 bg-white/[0.02] space-y-6">
-                  <div className="flex items-center gap-4">
-                    <div className="w-3 h-3 rounded-full bg-rose-500 animate-pulse shadow-[0_0_15px_#f43f5e]" />
-                    <span className="text-[11px] font-[950] uppercase opacity-50">Link Status: Offline</span>
+            <div className="flex-1 overflow-y-auto p-10 space-y-10 custom-scroll">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
+                {/* LEFT: PRIMARY DATA */}
+                <div className="space-y-8">
+                  <div className="grid grid-cols-2 gap-6">
+                    <div className="space-y-3">
+                      <label className="text-[9px] font-black uppercase text-white/40 tracking-widest">Instrument</label>
+                      <input type="text" placeholder="XAU/USD" className="w-full bg-white/5 border border-white/10 p-4 rounded-2xl text-xs font-bold focus:border-purple-500 outline-none transition-all" />
+                    </div>
+                    <div className="space-y-3">
+                      <label className="text-[9px] font-black uppercase text-white/40 tracking-widest">Entry Price</label>
+                      <input type="number" placeholder="2042.40" className="w-full bg-white/5 border border-white/10 p-4 rounded-2xl text-xs font-bold focus:border-purple-500 outline-none transition-all" />
+                    </div>
                   </div>
+
+                  <div className="grid grid-cols-3 gap-6">
+                    {['Lot Size', 'Stop Loss', 'Take Profit'].map((label) => (
+                      <div key={label} className="space-y-3">
+                        <label className="text-[9px] font-black uppercase text-white/40 tracking-widest">{label}</label>
+                        <input type="text" className="w-full bg-white/5 border border-white/10 p-4 rounded-xl text-xs font-bold outline-none" />
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* HYBRID MEDIA UPLOAD */}
                   <div className="space-y-3">
-                    <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden">
-                      <div className="h-full bg-blue-500 opacity-20" style={{ width: '0%' }} />
+                    <label className="text-[9px] font-black uppercase text-white/40 tracking-widest">Evidence (Vision Sync)</label>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="border-2 border-dashed border-white/5 rounded-2xl p-6 flex flex-col items-center justify-center gap-2 hover:bg-white/[0.02] cursor-pointer transition-all">
+                        <ImageIcon size={20} className="text-white/20" />
+                        <span className="text-[8px] font-black uppercase text-white/30">Upload Screenshot</span>
+                      </div>
+                      <input type="text" placeholder="Paste Chart URL..." className="w-full bg-white/5 border border-white/10 p-4 rounded-2xl text-[10px] font-bold outline-none self-center" />
                     </div>
-                    <p className="text-[9px] font-black opacity-20 uppercase tracking-widest text-center">Neural Link Inactive</p>
                   </div>
                 </div>
-                <div className="p-8 rounded-[40px] border border-blue-500/20 bg-blue-500/5">
-                  <h4 className="text-[10px] font-[950] text-blue-400 uppercase mb-4 flex items-center gap-3">
-                    <Brain size={16}/> Chart Intelligence
-                  </h4>
-                  <p className="text-[11px] font-bold opacity-60 leading-relaxed italic">
-                    "Syncing charts allows our AI to analyze price action context, candle structures, and news timing to suggest strategy optimizations."
-                  </p>
+
+                {/* RIGHT: PLAYBOOK & PSYCHOLOGY */}
+                <div className="bg-white/5 rounded-[32px] p-8 border border-white/5 space-y-8">
+                  <div>
+                    <h4 className="text-[10px] font-black uppercase text-purple-500 tracking-widest mb-6 flex items-center gap-2">
+                      <Brain size={14} /> Playbook Validation
+                    </h4>
+                    <div className="space-y-4">
+                      {['HTF Trend Confluence', 'Liquidity Sweep Observed', 'Entry Displacement'].map((rule, idx) => (
+                        <div key={idx} className="flex items-center gap-4 p-4 bg-black/40 rounded-xl border border-white/5">
+                          <input type="checkbox" className="w-4 h-4 rounded border-white/20 bg-transparent accent-purple-500" />
+                          <span className="text-[10px] font-bold text-white/60">{rule}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <label className="text-[9px] font-black uppercase text-white/40 tracking-widest">Mindset / Psychology</label>
+                    <div className="flex flex-wrap gap-2">
+                      {['Calm', 'Fear of Missing Out', 'Revenge', 'Disciplined'].map(tag => (
+                        <button key={tag} className="px-4 py-2 bg-white/5 rounded-lg text-[8px] font-black uppercase border border-white/5 hover:border-purple-500 transition-all">{tag}</button>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        </div>
-      )}
 
-      {/* SETTINGS TAB */}
-      {activeTab === 'settings' && (
-        <div className="max-w-5xl mx-auto animate-in fade-in slide-in-from-right-10 duration-700">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            <div style={{ backgroundColor: theme.card, borderRadius }} className="p-10 border border-white/5 space-y-3">
-              {['appearance', 'security', 'billing'].map(sub => (
-                <button
-                key={sub} 
-                  onClick={() => setActiveSettingsSubTab(sub)}
-                  className={`w-full p-5 rounded-2xl text-[11px] font-[950] uppercase tracking-widest flex items-center gap-4 transition-all ${activeSettingsSubTab === sub ? 'bg-white text-black' : 'hover:bg-white/5 opacity-40'}`}
-                >
-                  {sub === 'appearance' && <Palette size={16}/>}
-                  {sub === 'security' && <Lock size={16}/>}
-                  {sub === 'billing' && <Zap size={16}/>}
-                  {sub}
-                </button>
-              ))}
-            </div>
-            <div style={{ backgroundColor: theme.card, borderRadius }} className="md:col-span-2 p-12 border border-white/5 relative overflow-hidden">
-               {activeSettingsSubTab === 'appearance' && (
-                 <div className="space-y-12 animate-in fade-in duration-500">
-                    <div>
-                      <h4 className="text-[11px] font-[950] uppercase opacity-30 mb-8">Neural Accent Palette</h4>
-                      <div className="grid grid-cols-4 md:grid-cols-8 gap-5">
-                      {Object.keys(accs).map(colorName => (
-                          <button 
-                            key={colorName}
-                            onClick={() => setAccentColor(colorName)}
-                            className={`h-12 rounded-xl transition-all border-4 ${accentColor === colorName ? 'border-white scale-110 shadow-2xl' : 'border-transparent opacity-40'}`}
-                            style={{ backgroundColor: accs[colorName] }}
-                          />
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="flex justify-between items-center p-8 bg-white/5 rounded-[30px] border border-white/5">
-                      <div>
-                        <p className="text-xs font-[950] uppercase italic tracking-wider">Glassmorphism Mode</p>
-                        <p className="text-[10px] font-bold opacity-30 uppercase mt-2">Advanced UI Transparency & Blur</p>
-                      </div>
-                      <button 
-                        onClick={() => setGlassMode(!glassMode)}
-                        style={{ backgroundColor: glassMode ? theme.primary : '#333' }}
-                        className="w-16 h-9 rounded-full relative transition-all"
-                      >
-                        <div className={`absolute top-1.5 w-6 h-6 bg-white rounded-full transition-all ${glassMode ? 'left-8' : 'left-1.5'}`} />
-                      </button>
-                    </div>
-
-                    <div>
-                      <label className="text-[11px] font-[950] uppercase opacity-30 block mb-6 text-center tracking-[0.3em]">Interface Curvature: {borderRadius}</label>
-                      <input 
-                        type="range" min="0" max="60" value={parseInt(borderRadius)} 
-                        onChange={(e) => setBorderRadius(`${e.target.value}px`)}
-                        className="w-full h-1.5 bg-white/10 rounded-lg appearance-none cursor-pointer"
-                        style={{ accentColor: theme.primary }}
-                      />
-                    </div>
-                 </div>
-                 )}
-                 </div>
-               </div>
-             </div>
-           )}
-     
-           {/* QUICK LOG MODAL */}
-           {isModalOpen && (
-             <div className="fixed inset-0 z-[600] flex items-center justify-center p-4 animate-in fade-in duration-500">
-               <div className="absolute inset-0 bg-black/95 backdrop-blur-2xl" onClick={() => setIsModalOpen(false)} />
-               
-               <div style={{ backgroundColor: theme.card, borderColor: theme.border, borderRadius }} className="relative w-full max-w-5xl max-h-[90vh] overflow-y-auto border shadow-2xl p-12 animate-in zoom-in-95 duration-500 no-scrollbar">
-                 
-                 <div className="flex justify-between items-center mb-12">
-                   <div>
-                   <h2 className="text-4xl font-[950] italic uppercase tracking-tighter flex items-center gap-4">
-                  <Terminal className="text-emerald-500" size={32} /> New Execution
-                </h2>
-                <p className="text-[10px] font-black opacity-30 uppercase tracking-[0.4em] mt-3">Neural Logging Protocol Alpha-1</p>
-              </div>
-              <button onClick={() => setIsModalOpen(false)} className="w-14 h-14 rounded-full bg-white/5 flex items-center justify-center hover:bg-rose-500 transition-all group">
-                <X size={24} className="group-hover:rotate-90 transition-all" />
+            <div className="p-10 border-t border-white/5 flex gap-6">
+              <button className="flex-1 py-5 bg-white text-black rounded-[20px] text-xs font-black uppercase tracking-[0.2em] shadow-xl hover:scale-[1.02] active:scale-95 transition-all">
+                Commit to Sylledge
               </button>
             </div>
-            
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
-              {/* LEFT: DATA */}
-              <div className="space-y-8">
-                <InputBlock label="Trading Asset" val={form.symbol} set={(v) => setForm({...form, symbol: v.toUpperCase()})} theme={theme} icon={<Globe size={14}/>} placeholder="e.g. NAS100, XAUUSD" />
-                
-                <div className="grid grid-cols-2 gap-6">
-                <InputBlock label="Net PnL ($)" val={form.pnl} set={(v) => setForm({...form, pnl: v})} theme={theme} type="number" icon={<TrendingUp size={14}/>} />
-                  <div>
-                    <label className="text-[10px] font-[950] uppercase opacity-20 block mb-3 ml-2 flex items-center gap-2"><Calendar size={14}/> Execution Date</label>
-                    <input 
-                      type="date" 
-                      className="w-full bg-white/5 border border-white/5 p-5 rounded-[22px] font-[950] text-xs outline-none focus:border-white/20 transition-all text-white" 
-                      style={{ borderLeft: `5px solid ${theme.primary}` }}
-                      value={form.trade_date}
-                      onChange={(e) => setForm({...form, trade_date: e.target.value})}
-                    />
-                  </div>
-                </div>
-
-                <div className="p-8 rounded-[35px] bg-white/5 border border-white/5 space-y-6">
-                   <p className="text-[11px] font-[950] uppercase opacity-30 italic tracking-widest">Strategy Selection</p>
-                   <div className="flex flex-wrap gap-3">
-                   {['VWAP Rejection', 'Mean Reversion', 'Trend Cap', 'News Spike'].map(s => (
-                       <button 
-                         key={s} 
-                         onClick={() => setForm({...form, strategy: s})}
-                         className={`px-6 py-3 rounded-2xl text-[10px] font-[950] uppercase transition-all ${form.strategy === s ? 'bg-white text-black scale-105 shadow-xl' : 'bg-white/5 opacity-40 hover:opacity-100'}`}
-                       >
-                         {s}
-                       </button>
-                       ))}
-                   </div>
-                </div>
-              </div>
-
-              {/* RIGHT: CONTEXT */}
-              <div className="space-y-8">
-                <div className="space-y-4">
-                <label className="text-[10px] font-[950] uppercase opacity-20 ml-2 flex items-center gap-2">
-                    <ImageIcon size={14} /> Visual Evidence (Screenshot)
-                  </label>
-                  <div 
-                    className="group border-2 border-dashed border-white/10 rounded-[40px] p-12 flex flex-col items-center justify-center hover:border-white/30 transition-all cursor-pointer bg-white/[0.02]"
-                    onClick={() => alert("Upload to Supabase Storage Simulation...")}
-                  >
-                    <div className="w-14 h-14 rounded-2xl bg-white/5 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
-                      <Plus size={24} className="opacity-40" />
-                    </div>
-                    <p className="text-[10px] font-[950] uppercase opacity-30 italic">Drop Execution Capture</p>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-6">
-                  <SelectBlock label="Risk/Reward" val={form.risk_reward} set={(v) => setForm({...form, risk_reward: v})} theme={theme} options={['1:1', '1:2', '1:3', '1:5+']} />
-                  <SelectBlock label="Mindset" val={form.mindset} set={(v) => setForm({...form, mindset: v})} theme={theme} options={['Disciplined', 'Anxious', 'Greedy', 'FOMO']} />
-                </div>
-
-                <div className="space-y-3">
-                <label className="text-[10px] font-[950] uppercase opacity-20 ml-2 flex items-center gap-2"><Brain size={16} /> Strategy Logic Notes</label>
-                  <textarea
-                    rows="5"
-                    className="w-full bg-white/5 border border-white/5 p-6 rounded-[30px] font-bold text-xs outline-none focus:border-white/20 transition-all resize-none text-white leading-relaxed"
-                    style={{ borderLeft: `5px solid ${theme.primary}` }}
-                    placeholder="Describe the institutional liquidity flow and entry context..."
-                    value={form.notes}
-                    onChange={(e) => setForm({ ...form, notes: e.target.value })}
-                  />
-                </div>
-              </div>
-            </div>
-
-            <button
-              className="w-full mt-12 py-7 rounded-[35px] font-[950] text-sm uppercase tracking-[0.4em] transition-all hover:scale-[1.01] active:scale-95 shadow-2xl relative overflow-hidden group"
-              style={{ backgroundColor: theme.primary, color: '#fff' }}
-              onClick={async () => {
-                const { error } = await supabase.from('trades').insert([form]);
-                if (!error) { setIsModalOpen(false); fetchTrades(); }
-                else alert("Ledger Sync Error. Check Connection.");
-              }}
-            >
-              <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-500" />
-              <span className="relative z-10 flex items-center justify-center gap-4"><Fingerprint size={20}/> Commit to Ledger</span>
-            </button>
           </div>
         </div>
       )}
 
-      {/* FIXED QUICK LOG TRIGGER */}
-      <button 
-        style={{ backgroundColor: theme.primary }} 
-        onClick={() => setIsModalOpen(true)}
-        className="fixed bottom-12 right-12 w-24 h-24 text-white rounded-[40px] shadow-[0_30px_60px_rgba(0,0,0,0.6)] flex items-center justify-center z-[500] hover:scale-110 active:scale-90 transition-all border border-white/20 group hover:rotate-6"
+     {/* FLOATING ACTION BUTTON (Neural FAB) */}
+     <button 
+        onClick={() => setIsLogModalOpen(true)}
+        className="fixed bottom-10 right-10 w-20 h-20 rounded-full bg-white text-black flex items-center justify-center shadow-[0_20px_50px_rgba(255,255,255,0.3)] hover:scale-110 active:scale-90 transition-all z-40 group"
       >
-        <Plus size={40} className="group-hover:rotate-90 transition-transform duration-700" />
+        <Plus size={32} strokeWidth={3} className="group-hover:rotate-90 transition-transform duration-500" />
+        <div className="absolute inset-0 rounded-full bg-white animate-ping opacity-20 group-hover:opacity-0" />
       </button>
 
-    </main>
+            </div> {/* Close max-w-[1600px] */}
+          </div> {/* Close Dynamic Viewport */}
+        </main> 
+      </div> 
+    </div> 
   );
-}
+};
 
-// COMPONENTS
-function StatBox({ label, value, color, theme, radius, icon }) {
-  return (
-    <div style={{ backgroundColor: theme.card, borderColor: theme.border, borderRadius: radius }} className="border p-10 relative group hover:scale-[1.03] transition-all shadow-2xl overflow-hidden">
-      <div className="flex justify-between items-start mb-6">
-        <p className="text-[11px] font-[950] opacity-40 uppercase tracking-[0.3em]">{label}</p>
-        <div style={{ color: theme.primary }} className="opacity-50 group-hover:opacity-100 transition-opacity">{icon}</div>
-      </div>
-      <p className={`text-5xl font-[950] italic tracking-tighter ${color || 'text-white'}`}>{value}</p>
-      <div className="absolute bottom-0 left-0 h-1.5 w-0 group-hover:w-full transition-all duration-700" style={{ backgroundColor: theme.primary }} />
-    </div>
-  );
-}
-
-function InputBlock({ label, val, set, theme, type = "text", icon, placeholder }) {
-  return (
-    <div className="space-y-3">
-      <label className="text-[10px] font-[950] uppercase opacity-20 flex items-center gap-3 ml-3">
-        {icon} {label}
-      </label>
-      <input 
-        type={type} 
-        placeholder={placeholder}
-        className="w-full bg-white/5 border border-white/5 p-5 rounded-[22px] font-[950] text-xs outline-none focus:border-white/30 transition-all text-white placeholder:opacity-10" 
-        style={{ borderLeft: `5px solid ${theme.primary}` }} 
-        value={val}
-        onChange={(e) => set(e.target.value)} 
-      />
-    </div>
-  );
-}
-
-function SelectBlock({ label, val, set, theme, options }) {
-  return (
-    <div className="space-y-3">
-      <label className="text-[10px] font-[950] uppercase opacity-20 ml-3">{label}</label>
-      <select 
-        className="w-full bg-white/5 border border-white/5 p-5 rounded-[22px] font-[950] text-xs outline-none cursor-pointer appearance-none text-white"
-        style={{ borderLeft: `5px solid ${theme.primary}` }}
-        value={val}
-        onChange={(e) => set(e.target.value)}
-      >
-        {options.map(o => <option key={o} value={o}>{o}</option>)}
-        </select>
-    </div>
-  );
-}
-
-function MetricRow({ label, val, color }) {
-  return (
-    <div className="flex justify-between items-center text-[11px] font-[950] uppercase italic tracking-widest border-b border-white/5 pb-4">
-      <span className="opacity-40">{label}</span>
-      <span className={color || 'text-white'}>{val}</span>
-    </div>
-  );
-}
+export default TradingTerminal;
