@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../supabaseClient';
 import { 
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, 
@@ -14,612 +14,668 @@ import {
   LayoutDashboard, Globe, Lock, Clock, ArrowUpRight, BarChart4,
   LogOut, User, CreditCard, Languages, CheckCircle2, AlertTriangle, 
   Timer, ZapOff, Image as ImageIcon, ChevronRight, Moon, Sun, 
-  Wallet, Gauge, Database, MessageSquare, Briefcase, Menu, Search, Download, Info
+  Wallet, Gauge, Database, MessageSquare, Briefcase, Menu, Search, Download
 } from 'lucide-react';
 
 const TradingTerminal = () => {
+  // --- 1. CORE STATE & COMMERCIAL ENGINE ---
   const [hasMounted, setHasMounted] = useState(false);
   const [activeTab, setActiveTab] = useState('DASHBOARD');
-  const [activeSettingTab, setActiveSettingTab] = useState('Account'); 
-  const [userTier, setUserTier] = useState('ELITE');
+  const [userTier, setUserTier] = useState('ELITE'); // FREE, PRO, ELITE
   const [isPrivacyMode, setIsPrivacyMode] = useState(false);
   const [isSidebarExpanded, setIsSidebarExpanded] = useState(false);
   const [isLogModalOpen, setIsLogModalOpen] = useState(false);
-  
+
+  // Appearance Preferences
   const [theme, setTheme] = useState({
-    primary: '#a855f7',
+    primary: '#a855f7', // Purple Neural
     background: '#020408',
-    mode: 'dark'
+    glowIntensity: 0.15
   });
+
+  const [sessionMetrics, setSessionMetrics] = useState({
+    alpha: 94.2,
+    pnl: 12450,
+    winRate: 74.2,
+    sharpe: 2.1,
+    drawdown: 1.2
+  });
+
+  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+  const [trades, setTrades] = useState([]);
+
+  // --- 2. ADAPTIVE SHELL LOGIC ---
+  useEffect(() => {
+    setHasMounted(true);
+    const handleMouseMove = (e) => {
+      setMousePos({ 
+        x: (e.clientX / window.innerWidth) * 100, 
+        y: (e.clientY / window.innerHeight) * 100 
+      });
+    };
+    window.addEventListener('mousemove', handleMouseMove);
+    return () => window.removeEventListener('mousemove', handleMouseMove);
+  }, []);
+  
+  if (!hasMounted) return null;
+
   return (
-    <div className="relative z-10 flex h-screen overflow-hidden text-white" style={{ backgroundColor: theme.background }}>
-      {/* SIDEBAR NAVIGATION */}
-      <aside 
-        onMouseEnter={() => setIsSidebarExpanded(true)}
-        onMouseLeave={() => setIsSidebarExpanded(false)}
-        className={`flex flex-col border-r border-white/5 bg-black/40 backdrop-blur-3xl transition-all duration-500 z-50 ${isSidebarExpanded ? 'w-80' : 'w-24'}`}
-      >
-        <div className="flex flex-col h-full py-10 px-6">
-          {/* BRAND LOGO */}
-          <div className="flex items-center gap-4 mb-16 overflow-hidden">
+    <div className="min-h-screen bg-[#020408] text-white font-sans selection:bg-purple-500/30 overflow-x-hidden relative">
+      {/* Neural Background Engine */}
+      <div 
+        className="fixed inset-0 pointer-events-none opacity-20 transition-opacity duration-1000"
+        style={{ 
+          background: `radial-gradient(600px circle at ${mousePos.x}% ${mousePos.y}%, ${theme.primary}25, transparent 80%)` 
+        }}
+      />
+      <div className="fixed inset-0 pointer-events-none bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 mix-blend-overlay" />
+
+      <div className="relative z-10 flex h-screen overflow-hidden">
+        
+        {/* ADAPTIVE SIDEBAR (Sliver to Expanded) */}
+        <aside 
+          onMouseEnter={() => setIsSidebarExpanded(true)}
+          onMouseLeave={() => setIsSidebarExpanded(false)}
+          className={`flex flex-col border-r border-white/5 bg-black/40 backdrop-blur-3xl transition-all duration-500 z-50 ${
+            isSidebarExpanded ? 'w-80' : 'w-24'
+          }`}
+        >
+          <div className="flex flex-col h-full py-10 px-6">
+            <div className="flex items-center gap-4 mb-16 overflow-hidden">
             <div className="min-w-[48px] h-12 rounded-2xl bg-purple-500 flex items-center justify-center shadow-[0_0_30px_rgba(168,85,247,0.4)]">
-              <Zap size={24} className="text-white fill-white" />
+                <Zap size={24} className="text-white fill-white" />
+              </div>
+              <div className={`transition-opacity duration-300 ${isSidebarExpanded ? 'opacity-100' : 'opacity-0'}`}>
+                <h1 className="text-xl font-black italic tracking-tighter leading-none">TERMINAL</h1>
+                <p className="text-[7px] font-bold text-purple-500 tracking-[0.4em] mt-1 uppercase">Neural Elite</p>
+              </div>
             </div>
-            <div className={`transition-opacity duration-300 ${isSidebarExpanded ? 'opacity-100' : 'opacity-0'}`}>
-              <h1 className="text-xl font-black italic tracking-tighter leading-none">TERMINAL</h1>
-              <p className="text-[7px] font-bold text-purple-500 tracking-[0.4em] mt-1 uppercase">Neural Elite</p>
-            </div>
-          </div>
 
-          {/* NAV LINKS */}
-          <nav className="space-y-4 flex-1">
-            {[
-              { id: 'DASHBOARD', icon: <LayoutDashboard size={20}/>, label: 'Dashboard' },
-              { id: 'SYLLEDGE', icon: <Terminal size={20}/>, label: 'Sylledge AI' },
-              { id: 'BACKTEST', icon: <Cpu size={20}/>, label: 'AI Backtesting' },
-              { id: 'PLAYBOOK', icon: <Brain size={20}/>, label: 'Playbook' },
-              { id: 'SETTINGS', icon: <Settings size={20}/>, label: 'Settings' }, 
-            ].map((item) => (
+            <nav className="space-y-4 flex-1">
+              {[
+                { id: 'DASHBOARD', icon: <LayoutDashboard size={20}/>, label: 'Dashboard' },
+                { id: 'SYLLEDGE', icon: <Terminal size={20}/>, label: 'Sylledge AI' },
+                { id: 'BACKTEST', icon: <Cpu size={20}/>, label: 'AI Backtesting' },
+                { id: 'PLAYBOOK', icon: <Brain size={20}/>, label: 'Playbook' },
+                { id: 'SETTINGS', icon: <Settings size={20}/>, label: 'User Space' },
+              ].map((item) => (
+                <button
+                  key={item.id}
+                  onClick={() => setActiveTab(item.id)}
+                  className={`w-full flex items-center gap-6 p-4 rounded-2xl transition-all relative group ${
+                    activeTab === item.id ? 'bg-white/5 text-purple-500' : 'text-white/40 hover:text-white'
+                  }`}
+                >
+                  <div className="min-w-[20px]">{item.icon}</div>
+                  <span className={`text-[10px] font-black tracking-[0.2em] uppercase transition-opacity duration-300 ${
+                    isSidebarExpanded ? 'opacity-100' : 'opacity-0 pointer-events-none'
+                  }`}>
+                    {item.label}
+                  </span>
+                </button>
+              ))}
+            </nav>
+
+            {/* COMMERCIAL_ZONE_SIDEBAR_AD_PLACEHOLDER */}
+            {/* Future monetization/sponsor block goes here */}
+            </div>
+        </aside>
+
+        {/* MAIN CONTENT AREA */}
+        <main className="flex-1 flex flex-col min-w-0 overflow-hidden relative">
+          
+          {/* TOP NAVIGATION / HEADER */}
+          <header className="h-24 border-b border-white/5 flex items-center justify-between px-10 bg-black/20 backdrop-blur-md relative z-20">
+            <div className="flex items-center gap-8">
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                  <p className="text-[10px] font-black uppercase tracking-[0.3em] text-white/50">Neural Node Linked</p>
+                </div>
+                <h2 className="text-sm font-black uppercase tracking-widest italic">{activeTab}</h2>
+              </div>
+
+              <div className="h-8 w-[1px] bg-white/10" />
+              
+              <div className="flex items-center gap-6">
+                <button 
+                  onClick={() => setIsPrivacyMode(!isPrivacyMode)}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-xl border transition-all ${
+                    isPrivacyMode ? 'bg-purple-500/20 border-purple-500 text-purple-400' : 'bg-white/5 border-white/10 text-white/40'
+                  }`}
+                >
+                  {isPrivacyMode ? <Lock size={14} /> : <Globe size={14} />}
+                  <span className="text-[9px] font-black uppercase tracking-tighter">Ghost Mode</span>
+                </button>
+              </div>
+            </div>
+            <div className="flex items-center gap-6">
+              <div className="hidden xl:flex items-center gap-4 px-6 py-2 bg-white/5 rounded-2xl border border-white/5">
+                <div className="text-right">
+                  <p className="text-[8px] font-bold text-white/20 uppercase tracking-tighter">Latency</p>
+                  <p className="text-[10px] font-black text-purple-500">14ms</p>
+                </div>
+                <Activity size={16} className="text-purple-500" />
+              </div>
+
+              {/* FLOATING ACTION TRIGGER - TOP HEADER VERSION */}
               <button
-                key={item.id}
-                onClick={() => setActiveTab(item.id)}
-                className={`w-full flex items-center gap-6 p-4 rounded-2xl transition-all relative group ${activeTab === item.id ? 'bg-white/5 text-purple-500' : 'text-white/40 hover:text-white'}`}
+                onClick={() => setIsLogModalOpen(true)}
+                className="group relative flex items-center gap-3 px-8 py-4 bg-white text-black rounded-2xl transition-all hover:scale-105 active:scale-95 shadow-[0_0_30px_rgba(255,255,255,0.2)]"
               >
-                <div className="min-w-[20px]">{item.icon}</div>
-                <span className={`text-[10px] font-black tracking-[0.2em] uppercase transition-opacity duration-300 ${isSidebarExpanded ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
-                  {item.label}
-                </span>
+                <Plus size={18} strokeWidth={3} />
+                <span className="text-[10px] font-black uppercase tracking-[0.2em]">New Position</span>
               </button>
-            ))}
-          </nav>
-        </div>
-      </aside>
-      <main className="flex-1 flex flex-col min-w-0 overflow-hidden relative">
-        {/* HEADER */}
-        <header className="h-24 border-b border-white/5 flex items-center justify-between px-10 bg-black/20 backdrop-blur-md relative z-20">
-          <div className="flex items-center gap-8">
-            <h2 className="text-sm font-black uppercase tracking-widest italic">{activeTab}</h2>
-          </div>
+            
+              <div className="w-12 h-12 rounded-2xl border border-white/10 bg-gradient-to-br from-white/10 to-transparent p-[1px]">
+                <div className="w-full h-full rounded-2xl bg-[#020408] flex items-center justify-center overflow-hidden">
+                   <User size={20} className="text-white/40" />
+                </div>
+              </div>
+            </div>
+          </header>
 
-          <div className="flex items-center gap-6">
-            {/* NEW POSITION BUTTON */}
-            <button 
-              onClick={() => setIsLogModalOpen(true)} 
-              className="flex items-center gap-3 px-8 py-4 bg-white text-black rounded-2xl transition-all hover:scale-105 shadow-xl"
-            >
-              <Plus size={18} strokeWidth={3} />
-              <span className="text-[10px] font-black uppercase tracking-[0.2em]">New Position</span>
-            </button>
+          {/* DYNAMIC VIEWPORT */}
+        <div className="flex-1 overflow-y-auto scrollbar-hide p-10 custom-scroll">
+            <div className="max-w-[1600px] mx-auto space-y-10">
+              
+              {activeTab === 'DASHBOARD' && (
+                <>
+                  {/* KPI GRID */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                    {[
+                      { label: 'Neural Alpha', value: sessionMetrics.alpha + '%', sub: '+2.4% vs Bench', icon: <Zap size={16}/>, color: 'text-purple-500' },
+                      { label: 'Session PnL', value: '$' + sessionMetrics.pnl.toLocaleString(), sub: 'Today', icon: <TrendingUp size={16}/>, color: 'text-emerald-500' },
+                      { label: 'Win Probability', value: sessionMetrics.winRate + '%', sub: 'Calculated', icon: <Target size={16}/>, color: 'text-blue-500' },
+                      { label: 'Max Drawdown', value: sessionMetrics.drawdown + '%', sub: 'Last 30d', icon: <Activity size={16}/>, color: 'text-rose-500' }
+                    ].map((card, i) => (
+                      <div key={i} className="group relative bg-white/5 border border-white/5 p-8 rounded-[32px] overflow-hidden hover:border-white/10 transition-all duration-500">
+                        <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:opacity-20 transition-opacity">
+                          {card.icon}
+                        </div>
+                        <div className={`text-[10px] font-black uppercase tracking-[0.2em] mb-4 ${card.color}`}>
+                          {card.label}
+                        </div>
+                        <div className={`text-4xl font-black italic tracking-tighter mb-2 ${isPrivacyMode ? 'blur-md' : ''}`}>
+                          {card.value}
+                        </div>
+                        <p className="text-[10px] text-white/30 font-bold uppercase tracking-widest">{card.sub}</p>
+                      </div>
+                    ))}
+                  </div>
 
-            {/* ACCOUNT ICON -> SETTINGS (Point A/9) */}
-            <button 
-              onClick={() => {
-                setActiveTab('SETTINGS');
-                setActiveSettingTab('Account');
-              }} 
-              className="w-12 h-12 rounded-2xl border border-white/10 overflow-hidden hover:border-purple-500 transition-all group"
-            >
-               <div className="w-full h-full bg-gradient-to-br from-white/10 to-transparent flex items-center justify-center group-hover:bg-purple-500/10 transition-colors">
-                  <User size={20} className="text-white/40 group-hover:text-purple-500" />
-               </div>
-            </button>
-          </div>
-        </header>
-
-        {/* MAIN SCROLLABLE CONTENT AREA */}
-        <div className="flex-1 overflow-y-auto p-10 custom-scroll">
-          <div className="max-w-[1600px] mx-auto space-y-10">
-
-            {/* --- DASHBOARD VIEW --- */}
-            {activeTab === 'DASHBOARD' && (
-              <>
-                {/* KPI GRID (Points A/1, A/2, A/3) */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                  {[
-                    { label: 'Neural Alpha', value: '94.2%', sub: '+2.4% vs Bench', icon: <Zap size={16}/>, color: 'text-purple-500', info: 'Proprietary AI score based on execution quality and emotional discipline.' },
-                    { label: 'P&L', value: '$12,450', sub: 'Filtered View', icon: <TrendingUp size={16}/>, color: 'text-emerald-500', info: 'Net Profit or Loss for the selected timeframe and strategy.' },
-                    { label: 'Win Rate', value: '74.2%', sub: 'Validated', icon: <Target size={16}/>, color: 'text-blue-500', info: 'The percentage of trades that resulted in a profit.' },
-                    { label: 'Max Drawdown', value: '1.2%', sub: 'Last 30d', icon: <Activity size={16}/>, color: 'text-rose-500', info: 'The maximum observed loss from a peak to a trough of a portfolio.' }
-                  ].map((card, i) => (
-                    <div key={i} className="group relative bg-white/5 border border-white/5 p-8 rounded-[32px] hover:border-white/10 transition-all duration-500">
-                      <div className="flex justify-between items-start mb-4">
-                        <p className="text-[10px] font-black uppercase tracking-[0.3em] text-white/30">{card.label}</p>
-                        <div className="relative group/tooltip">
-                          <Info size={14} className="text-white/10 hover:text-purple-500 cursor-help transition-colors" />
-                          <div className="absolute bottom-full right-0 mb-2 w-48 p-3 bg-black border border-white/10 rounded-xl text-[8px] leading-relaxed text-white/60 opacity-0 group-hover/tooltip:opacity-100 transition-opacity pointer-events-none z-50 shadow-2xl">
-                            {card.info}
+                  {/* DATA VISUALIZATION ROW */}
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div className="lg:col-span-2 bg-white/5 border border-white/5 rounded-[32px] p-8 h-[450px] relative overflow-hidden">
+                      <div className="flex items-center justify-between mb-8">
+                        <div className="flex items-center gap-4">
+                          <div className="w-10 h-10 rounded-xl bg-purple-500/10 flex items-center justify-center text-purple-500">
+                            <TrendingUp size={20} />
                           </div>
+                          <h3 className="text-xs font-black uppercase tracking-[0.3em]">Equity Growth Neural Projection</h3>
+                        </div>
+                        <div className="flex gap-2">
+                          {['1D', '1W', '1M', 'ALL'].map(tf => (
+                            <button key={tf} className="px-4 py-2 rounded-lg bg-white/5 text-[9px] font-black hover:bg-white/10 transition-all">{tf}</button>
+                          ))}
                         </div>
                       </div>
-                      
-                      <div className={`text-3xl font-black italic tracking-tighter mb-2 ${card.color}`}>
-                        {card.value}
+                      <div className={`w-full h-full pb-12 ${isPrivacyMode ? 'blur-2xl' : ''}`}>
+                      <ResponsiveContainer width="100%" height="100%">
+                          <AreaChart data={[
+                            { name: 'Mon', val: 4000 }, { name: 'Tue', val: 3000 }, { name: 'Wed', val: 5500 },
+                            { name: 'Thu', val: 4800 }, { name: 'Fri', val: 7000 }, { name: 'Sat', val: 6800 }, { name: 'Sun', val: 9000 }
+                          ]}>
+                            <defs>
+                              <linearGradient id="colorVal" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="5%" stopColor={theme.primary} stopOpacity={0.3}/>
+                                <stop offset="95%" stopColor={theme.primary} stopOpacity={0}/>
+                              </linearGradient>
+                            </defs>
+                            <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#444', fontSize: 10}} dy={10} />
+                            <Tooltip contentStyle={{backgroundColor: '#000', border: 'none', borderRadius: '12px', fontSize: '10px'}} />
+                            <Area type="monotone" dataKey="val" stroke={theme.primary} strokeWidth={4} fillOpacity={1} fill="url(#colorVal)" />
+                          </AreaChart>
+                        </ResponsiveContainer>
                       </div>
+                    </div>
+
+                    <div className="bg-white/5 border border-white/5 rounded-[32px] p-8 flex flex-col items-center justify-center relative">
+                      <h3 className="text-xs font-black uppercase tracking-[0.3em] mb-8 text-center">Neural Skill Distribution</h3>
+                      <ResponsiveContainer width="100%" height={280}>
+                        <RadarChart cx="50%" cy="50%" outerRadius="80%" data={[
+                          { subject: 'Risk', A: 120, fullMark: 150 }, { subject: 'Timing', A: 98, fullMark: 150 },
+                          { subject: 'Edge', A: 86, fullMark: 150 }, { subject: 'Mindset', A: 99, fullMark: 150 },
+                          { subject: 'Speed', A: 85, fullMark: 150 }
+                        ]}>
+
+<PolarGrid stroke="#ffffff10" />
+                          <PolarAngleAxis dataKey="subject" tick={{fill: '#ffffff40', fontSize: 8}} />
+                          <Radar name="Skills" dataKey="A" stroke={theme.primary} fill={theme.primary} fillOpacity={0.5} />
+                        </RadarChart>
+                      </ResponsiveContainer>
+                      <div className="mt-8 grid grid-cols-2 gap-4 w-full">
+                        <div className="p-4 bg-white/5 rounded-2xl text-center">
+                          <p className="text-[8px] font-bold text-white/30 uppercase mb-1">Consistency</p>
+                          <p className="text-sm font-black text-emerald-500">A+</p>
+                        </div>
+                        <div className="p-4 bg-white/5 rounded-2xl text-center">
+                          <p className="text-[8px] font-bold text-white/30 uppercase mb-1">Recovery</p>
+                          <p className="text-sm font-black text-purple-500">S-Tier</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* COMMERCIAL_ZONE_DASHBOARD_MIDDLE_PLACEHOLDER */}
+                  {/* Future monetization banner or premium insights carousel goes here */}
+
+                  <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+                    <div className="lg:col-span-3 bg-white/5 border border-white/5 rounded-[32px] p-8">
+                       <div className="flex items-center gap-4 mb-8">
+                          <Calendar size={20} className="text-purple-500" />
+                          <h3 className="text-xs font-black uppercase tracking-[0.3em]">Execution Calendar</h3>
+                       </div>
+                       <div className="grid grid-cols-7 gap-2">
+                         {[...Array(31)].map((_, i) => (
+                           <div key={i} className="aspect-square rounded-xl bg-white/5 border border-white/5 flex flex-col items-center justify-center group hover:border-purple-500/50 transition-all cursor-crosshair">
+                             <span className="text-[8px] font-bold text-white/20 mb-1">{i + 1}</span>
+                             {i % 3 === 0 ? (
+                               <div className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]" />
+                             ) : i % 7 === 0 ? (
+                               <div className="w-2 h-2 rounded-full bg-rose-500 shadow-[0_0_10px_rgba(244,63,94,0.5)]" />
+                             ) : null}
+                           </div>
+                         ))}
+                       </div>
+                    </div>
+                    <div className="bg-white/5 border border-white/5 rounded-[32px] p-8">
+                       <h3 className="text-xs font-black uppercase tracking-[0.3em] mb-6">Neural Insights</h3>
+                       <div className="space-y-4">
+                         <div className="p-4 rounded-2xl bg-purple-500/10 border border-purple-500/20">
+                            <p className="text-[10px] leading-relaxed text-purple-200">System detects high win-rate during London Open. Consider scaling size by 1.2x.</p>
+                         </div>
+                         <div className="p-4 rounded-2xl bg-white/5 border border-white/5">
+                            <p className="text-[10px] leading-relaxed text-white/40">Risk of overtrading detected in mid-session. Maintain discipline.</p>
+                         </div>
+                       </div>
+                    </div>
+                  </div>
+                </>
+              )}
+              {activeTab === 'SYLLEDGE' && (
+                <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-2xl font-black italic tracking-tighter">SYLLEDGE DATA MINE</h3>
+                      <p className="text-[10px] font-bold text-white/30 uppercase tracking-[0.4em]">Proprietary Execution Log</p>
+                    </div>
+                    <div className="flex gap-4">
+                      <button className="px-6 py-3 bg-white/5 border border-white/10 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-white/10 transition-all flex items-center gap-2">
+                        <Download size={14} /> Export CSV
+                      </button>
+                      <button className="px-6 py-3 bg-purple-500 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-purple-600 transition-all shadow-lg shadow-purple-500/20 flex items-center gap-2">
+                        <Database size={14} /> Sync MT5
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="bg-white/5 border border-white/5 rounded-[32px] overflow-hidden">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="border-b border-white/5 bg-white/5">
+                          {['Asset', 'Type', 'Entry', 'Size', 'PnL', 'Status', 'Insights'].map((head) => (
+                            <th key={head} className="p-6 text-[9px] font-black uppercase tracking-[0.2em] text-white/40">{head}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-white/5">
+                        {[
+                          { pair: 'XAUUSD', type: 'LONG', price: '2024.45', size: '2.50', pnl: '+ $1,420', status: 'WIN', alpha: '92%' },
+                          { pair: 'BTCUSD', type: 'SHORT', price: '64210.0', size: '1.00', pnl: '- $450', status: 'LOSS', alpha: '45%' },
+                          { pair: 'EURUSD', type: 'LONG', price: '1.08542', size: '10.0', pnl: '+ $890', status: 'WIN', alpha: '88%' },
+                        ].map((trade, i) => (
+                          <tr key={i} className="group hover:bg-white/[0.02] transition-colors cursor-pointer">
+                            <td className="p-6">
+                              <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-[10px] font-black">{trade.pair.substring(0,2)}</div>
+                                <span className="text-xs font-black tracking-tighter">{trade.pair}</span>
+                              </div>
+                            </td>
+                            <td className="p-6">
+                              <span className={`text-[10px] font-black ${trade.type === 'LONG' ? 'text-emerald-500' : 'text-rose-500'}`}>{trade.type}</span>
+                            </td>
+                            <td className="p-6 text-xs font-mono text-white/60">{trade.price}</td>
+                            <td className="p-6 text-xs font-mono text-white/60">{trade.size}</td>
+                            <td className={`p-6 text-xs font-black ${trade.pnl.includes('+') ? 'text-emerald-500' : 'text-rose-500'}`}>
+                              <span className={isPrivacyMode ? 'blur-md' : ''}>{trade.pnl}</span>
+                            </td>
+                            <td className="p-6">
+                              <div className={`text-[8px] font-black px-2 py-1 rounded border inline-block ${trade.status === 'WIN' ? 'border-emerald-500/50 text-emerald-500' : 'border-rose-500/50 text-rose-500'}`}>
+                                {trade.status}
+                              </div>
+                            </td>
+                            <td className="p-6">
+                              <div className="flex items-center gap-2">
+                                <Sparkles size={12} className="text-purple-500" />
+                                <span className="text-[10px] font-bold text-white/60 tracking-tight">Alpha Score: {trade.alpha}</span>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {activeTab === 'BACKTEST' && (
+                <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                    <div className="lg:col-span-1 space-y-6">
+                      <div className="bg-white/5 border border-white/5 rounded-[32px] p-8">
+                        <h3 className="text-xs font-black uppercase tracking-[0.3em] mb-8">Simulation Engine</h3>
+                        <div className="space-y-6">
+                          <div>
+                            <label className="text-[8px] font-black uppercase text-white/30 tracking-widest block mb-3">Strategy Logic</label>
+                            <select className="w-full bg-black/40 border border-white/10 rounded-xl p-4 text-[10px] font-bold outline-none focus:border-purple-500 transition-all">
+                              <option>Mean Reversion v4.2</option>
+                              <option>Liquidity Sweep Alpha</option>
+                              <option>Neural Trend Follower</option>
+                            </select>
+                          </div>
+                          <div className="grid grid-cols-2 gap-4">
+                            <div>
+                              <label className="text-[8px] font-black uppercase text-white/30 tracking-widest block mb-3">Sample Size</label>
+                              <input type="text" defaultValue="500 Trades" className="w-full bg-black/40 border border-white/10 rounded-xl p-4 text-[10px] font-bold outline-none focus:border-purple-500 transition-all" />
+                            </div>
+                            <div>
+                              <label className="text-[8px] font-black uppercase text-white/30 tracking-widest block mb-3">Risk Per Op</label>
+                              <input type="text" defaultValue="1.5%" className="w-full bg-black/40 border border-white/10 rounded-xl p-4 text-[10px] font-bold outline-none focus:border-purple-500 transition-all" />
+                            </div>
+                          </div>
+                          <button className="w-full py-4 bg-purple-500 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] shadow-lg shadow-purple-500/20 hover:scale-[1.02] active:scale-95 transition-all">
+                            Run Simulation
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="bg-gradient-to-br from-purple-600/20 to-transparent border border-purple-500/20 rounded-[32px] p-8">
+                         <div className="flex items-center gap-3 mb-4">
+                            <Brain size={18} className="text-purple-400" />
+                            <h4 className="text-[10px] font-black uppercase tracking-widest">Neural Projection</h4>
+                         </div>
+                         <p className="text-[10px] text-purple-200/60 leading-relaxed">Based on current volatility, this strategy has a 68% probability of maintaining its Sharpe ratio over the next 100 iterations.</p>
+                      </div>
+                    </div>
+                    <div className="lg:col-span-2 bg-white/5 border border-white/5 rounded-[32px] p-8 h-[600px] flex flex-col">
+                       <div className="flex items-center justify-between mb-8">
+                          <div className="flex items-center gap-4">
+                            <div className="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center text-blue-500">
+                              <Cpu size={20} />
+                            </div>
+                            <h3 className="text-xs font-black uppercase tracking-[0.3em]">Probabilistic Outcome Curve</h3>
+                          </div>
+                       </div>
+                       <div className="flex-1 w-full">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <LineChart data={[
+                              { x: 0, y: 0 }, { x: 10, y: 5 }, { x: 20, y: 15 }, { x: 30, y: 12 },
+                              { x: 40, y: 25 }, { x: 50, y: 40 }, { x: 60, y: 38 }, { x: 70, y: 55 },
+                              { x: 80, y: 70 }, { x: 90, y: 65 }, { x: 100, y: 85 }
+                            ]}>
+                              <XAxis dataKey="x" hide />
+                              <YAxis hide />
+                              <Tooltip contentStyle={{backgroundColor: '#000', border: 'none', borderRadius: '12px', fontSize: '10px'}} />
+                              <Line type="monotone" dataKey="y" stroke={theme.primary} strokeWidth={4} dot={false} shadow="0 0 20px rgba(168,85,247,0.5)" />
+                            </LineChart>
+                          </ResponsiveContainer>
+                       </div>
+                       <div className="grid grid-cols-3 gap-4 mt-8">
+                          <div className="text-center p-4 bg-white/5 rounded-2xl">
+                             <p className="text-[8px] font-bold text-white/20 uppercase mb-1">Expectancy</p>
+                             <p className="text-sm font-black text-white">$420/trade</p>
+                          </div>
+                          <div className="text-center p-4 bg-white/5 rounded-2xl">
+                             <p className="text-[8px] font-bold text-white/20 uppercase mb-1">Max DD</p>
+                             <p className="text-sm font-black text-rose-500">8.4%</p>
+                          </div>
+                          <div className="text-center p-4 bg-white/5 rounded-2xl">
+                             <p className="text-[8px] font-bold text-white/20 uppercase mb-1">Recovery</p>
+                             <p className="text-sm font-black text-emerald-500">12 Days</p>
+                          </div>
+                       </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {activeTab === 'PLAYBOOK' && (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+                  {[
+                    { title: 'The Silver Bullet', grade: 'S-Tier', rules: 5, edge: '92%', color: 'border-purple-500/50' },
+                    { title: 'Liquidity Grab', grade: 'A+', rules: 4, edge: '84%', color: 'border-blue-500/50' },
+                    { title: 'Catalyst Break', grade: 'B', rules: 6, edge: '71%', color: 'border-white/10' },
+                  ].map((play, i) => (
+                    <div key={i} className={`bg-white/5 border ${play.color} rounded-[32px] p-8 group hover:scale-[1.02] transition-all cursor-pointer relative overflow-hidden`}>
+                      <div className="flex justify-between items-start mb-12">
+                        <div className="w-12 h-12 rounded-2xl bg-white/5 flex items-center justify-center">
+                          <Brain size={24} className="text-white/40 group-hover:text-white transition-colors" />
+                        </div>
+                        <span className="text-[10px] font-black px-3 py-1 bg-white text-black rounded-lg uppercase tracking-tighter">{play.grade}</span>
+                      </div>
+                      <h4 className="text-xl font-black italic tracking-tighter mb-2">{play.title}</h4>
+                      <p className="text-[10px] font-bold text-white/30 uppercase tracking-[0.2em] mb-8">Systematic Edge: {play.edge}</p>
                       
-                      <div className="flex items-center gap-2">
-                        <span className="text-[9px] font-bold text-white/50 uppercase">{card.sub}</span>
-                        <div className="h-[1px] flex-1 bg-white/5" />
+                      <div className="space-y-3">
+                        {[...Array(3)].map((_, j) => (
+                          <div key={j} className="flex items-center gap-3">
+                            <CheckCircle2 size={12} className="text-emerald-500" />
+                            <span className="text-[10px] font-bold text-white/60">Rule Validation 0{j+1} Passed</span>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="mt-8 pt-8 border-t border-white/5 flex justify-between items-center">
+                        <span className="text-[8px] font-black text-white/20 uppercase tracking-widest">{play.rules} Rules Active</span>
+                        <ChevronRight size={16} className="text-white/20" />
                       </div>
                     </div>
                   ))}
                 </div>
+              )}
 
-                {/* MAIN ANALYTICS SECTION */}
-                <div className="grid grid-cols-1 xl:grid-cols-3 gap-10">
-                  {/* 1. UPGRADED NEURAL SCORE (Point A/5) */}
-                  <div className="bg-white/5 border border-white/5 p-8 rounded-[40px] flex flex-col items-center justify-center relative overflow-hidden group">
-                    <div className="absolute inset-0 bg-gradient-to-b from-purple-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700" />
-                    
-                    <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-white/40 mb-8 self-start flex items-center gap-2">
-                      <Cpu size={14} className="text-purple-500" /> Performance DNA
-                    </h3>
-                    
-                    <div className="w-full h-64 relative z-10">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <RadarChart cx="50%" cy="50%" outerRadius="80%" data={[
-                          { subject: 'Win %', A: 85 },
-                          { subject: 'RR Ratio', A: 70 },
-                          { subject: 'Psychology', A: 90 },
-                          { subject: 'Risk Mgmt', A: 75 },
-                          { subject: 'Timing', A: 60 },
-                        ]}>
-                          <PolarGrid stroke="#ffffff10" />
-                          <PolarAngleAxis dataKey="subject" tick={{ fill: '#ffffff40', fontSize: 8, fontWeight: 'bold' }} />
-                          <Radar name="Trader" dataKey="A" stroke={theme.primary} fill={theme.primary} fillOpacity={0.5} />
-                        </RadarChart>
-                      </ResponsiveContainer>
+              {activeTab === 'SETTINGS' && (
+                <div className="max-w-4xl space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div className="space-y-8">
+                      <div className="bg-white/5 border border-white/5 rounded-[32px] p-8">
+                        <h3 className="text-xs font-black uppercase tracking-[0.3em] mb-8">Identity Profile</h3>
+                        <div className="flex items-center gap-6 mb-8">
+                          <div className="w-20 h-20 rounded-[24px] bg-gradient-to-br from-purple-500 to-blue-500 p-[2px]">
+                            <div className="w-full h-full rounded-[22px] bg-black flex items-center justify-center">
+                               <User size={32} />
+                            </div>
+                          </div>
+                          <div>
+                            <p className="text-sm font-black italic tracking-tight">Neural_User_771</p>
+                            <p className="text-[10px] font-bold text-purple-500 uppercase tracking-widest">Elite Tier Active</p>
+                          </div>
+                        </div>
+                        <div className="space-y-4">
+                          <button className="w-full p-4 bg-white/5 border border-white/10 rounded-xl text-[10px] font-black uppercase tracking-widest text-left flex justify-between">
+                            Edit Alias <ChevronRight size={14} />
+                          </button>
+                          <button className="w-full p-4 bg-white/5 border border-white/10 rounded-xl text-[10px] font-black uppercase tracking-widest text-left flex justify-between">
+                            Privacy Settings <ChevronRight size={14} />
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="bg-white/5 border border-white/5 rounded-[32px] p-8">
+                        <div className="flex items-center gap-3 mb-8">
+                           <ShieldCheck size={18} className="text-emerald-500" />
+                           <h3 className="text-xs font-black uppercase tracking-[0.3em]">Security Matrix</h3>
+                        </div>
+                        <div className="space-y-6">
+                           <div className="flex items-center justify-between">
+                              <span className="text-[10px] font-bold text-white/40 uppercase">Two-Factor Auth</span>
+                              <div className="w-10 h-5 bg-purple-500 rounded-full relative"><div className="absolute right-1 top-1 w-3 h-3 bg-white rounded-full"/></div>
+                           </div>
+                           <div className="flex items-center justify-between">
+                              <span className="text-[10px] font-bold text-white/40 uppercase">API Encryption</span>
+                              <span className="text-[10px] font-black text-emerald-500">AES-256</span>
+                           </div>
+                        </div>
+                      </div>
                     </div>
 
-                    <div className="mt-6 text-center relative z-10">
-                      <span className="text-6xl font-black italic tracking-tighter text-white drop-shadow-[0_0_20px_rgba(168,85,247,0.8)]">
-                        81
-                      </span>
-                      <p className="text-[9px] font-black text-purple-400 uppercase tracking-widest mt-2">Neural Grade: Optimal</p>
+                    <div className="bg-white/5 border border-white/5 rounded-[32px] p-8">
+                      <div className="flex items-center gap-3 mb-8">
+                         <Palette size={18} className="text-purple-500" />
+                         <h3 className="text-xs font-black uppercase tracking-[0.3em]">Neural Aesthetic</h3>
+                      </div>
+                      <div className="grid grid-cols-4 gap-4 mb-8">
+                        {['#a855f7', '#3b82f6', '#10b981', '#f43f5e'].map(color => (
+                          <button 
+                            key={color}
+                            onClick={() => setTheme({...theme, primary: color})}
+                            className="aspect-square rounded-xl border-2 border-white/5 transition-all hover:scale-105"
+                            style={{ backgroundColor: color, borderColor: theme.primary === color ? 'white' : 'transparent' }}
+                          />
+                        ))}
+                      </div>
+                      <div className="space-y-4">
+                        <div className="flex justify-between items-center">
+                          <span className="text-[10px] font-bold text-white/40 uppercase">Glow Intensity</span>
+                          <span className="text-[10px] font-black text-white">{(theme.glowIntensity * 100).toFixed(0)}%</span>
+                        </div>
+                        <input 
+                          type="range" 
+                          min="0" max="0.5" step="0.01" 
+                          value={theme.glowIntensity}
+                          onChange={(e) => setTheme({...theme, glowIntensity: parseFloat(e.target.value)})}
+                          className="w-full accent-purple-500" 
+                        />
+                      </div>
                     </div>
                   </div>
+                </div>
+              )}
+            </div>
+        </div>
+
+     {/* --- 5. NEURAL ENTRY MODAL --- */}
+     {isLogModalOpen && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-6">
+            <div className="absolute inset-0 bg-black/80 backdrop-blur-2xl" onClick={() => setIsLogModalOpen(false)} />
+            <div className="relative w-full max-w-6xl bg-[#020408] border border-white/10 rounded-[40px] shadow-[0_0_100px_rgba(168,85,247,0.15)] overflow-hidden flex flex-col max-h-[95vh]">
+              <div className="p-10 border-b border-white/5 flex items-center justify-between bg-white/[0.02]">
+                <div>
+                  <h3 className="text-2xl font-black italic tracking-tighter">COMMIT NEW POSITION</h3>
+                  <p className="text-[10px] font-bold text-white/30 uppercase tracking-[0.4em]">Neural Validation Active</p>
+                </div>
+                <button onClick={() => setIsLogModalOpen(false)} className="w-12 h-12 rounded-2xl bg-white/5 flex items-center justify-center hover:bg-white/10 transition-all">
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-10 space-y-10 custom-scroll">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
                   
-                  {/* 2. EQUITY CURVE WITH TIMEFRAME FILTERS (Point A/6) */}
-                  <div className="xl:col-span-2 bg-white/5 border border-white/5 p-10 rounded-[40px] relative overflow-hidden h-[510px]">
-                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-10">
-                      <div>
-                        <h3 className="text-sm font-black uppercase tracking-widest mb-1">Equity Growth</h3>
-                        <p className="text-[10px] font-bold text-white/20 uppercase tracking-tighter">Real-time Performance Analysis</p>
+                  {/* LEFT COLUMN: PRIMARY METRICS */}
+                  <div className="space-y-8">
+                    <div className="grid grid-cols-2 gap-6">
+                      <div className="space-y-3">
+                        <label className="text-[9px] font-black uppercase text-white/30 tracking-widest">Trade Date</label>
+                        <input type="date" className="w-full bg-white/5 border border-white/10 rounded-2xl p-5 text-sm font-bold text-white outline-none focus:border-purple-500 transition-all [color-scheme:dark]" />
                       </div>
-                      
-                      {/* TIMEFRAME SELECTOR (Point A/6) */}
-                      <div className="flex bg-black/40 p-1 rounded-xl border border-white/5">
-                        {['1D', '1W', '1M', '3M', 'ALL'].map((tf) => (
-                          <button 
-                            key={tf} 
-                            className={`px-4 py-2 rounded-lg text-[9px] font-black uppercase tracking-tighter transition-all ${tf === 'ALL' ? 'bg-white/10 text-white shadow-lg' : 'text-white/30 hover:text-white'}`}
-                          >
-                            {tf}
+                      <div className="space-y-3">
+                        <label className="text-[9px] font-black uppercase text-white/30 tracking-widest">Strategy / Playbook</label>
+                        <input type="text" placeholder="e.g. Silver Bullet" className="w-full bg-white/5 border border-white/10 rounded-2xl p-5 text-sm font-bold outline-none focus:border-purple-500 transition-all" />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-6">
+                      <div className="space-y-3">
+                        <label className="text-[9px] font-black uppercase text-white/30 tracking-widest">Instrument</label>
+                        <input type="text" placeholder="e.g. XAUUSD" className="w-full bg-white/5 border border-white/10 rounded-2xl p-5 text-sm font-bold outline-none focus:border-purple-500 transition-all" />
+                      </div>
+                      <div className="space-y-3">
+                        <label className="text-[9px] font-black uppercase text-white/30 tracking-widest">Position Size</label>
+                        <input type="text" placeholder="0.00" className="w-full bg-white/5 border border-white/10 rounded-2xl p-5 text-sm font-bold outline-none focus:border-purple-500 transition-all" />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-6">
+                      <div className="space-y-3">
+                        <label className="text-[9px] font-black uppercase text-white/30 tracking-widest">Entry Price</label>
+                        <input type="number" step="any" placeholder="0.00000" className="w-full bg-white/5 border border-white/10 rounded-2xl p-5 text-sm font-bold outline-none focus:border-purple-500 transition-all" />
+                      </div>
+                      <div className="space-y-3">
+                        <label className="text-[9px] font-black uppercase text-white/30 tracking-widest">Exit Price</label>
+                        <input type="number" step="any" placeholder="0.00000" className="w-full bg-white/5 border border-white/10 rounded-2xl p-5 text-sm font-bold outline-none focus:border-purple-500 transition-all" />
+                      </div>
+                    </div>
+
+                    <div className="space-y-3">
+                      <label className="text-[9px] font-black uppercase text-white/30 tracking-widest">Risk : Reward Ratio</label>
+                      <input type="text" placeholder="e.g. 1:3.5" className="w-full bg-white/5 border border-white/10 rounded-2xl p-5 text-sm font-bold outline-none focus:border-purple-500 transition-all" />
+                    </div>
+
+                    <div className="space-y-3">
+                      <label className="text-[9px] font-black uppercase text-white/30 tracking-widest">Entry Thesis</label>
+                      <textarea rows={3} placeholder="Describe the neural confluence..." className="w-full bg-white/5 border border-white/10 rounded-2xl p-5 text-sm font-bold outline-none focus:border-purple-500 transition-all resize-none" />
+                    </div>
+                  </div>
+
+                  {/* RIGHT COLUMN: VISION & PSYCHOLOGY */}
+                  <div className="space-y-8">
+                    <div className="aspect-video bg-white/5 border-2 border-dashed border-white/10 rounded-3xl flex flex-col items-center justify-center group hover:border-purple-500/50 transition-all cursor-pointer">
+                      <ImageIcon size={32} className="text-white/20 group-hover:text-purple-500 transition-colors mb-4" />
+                      <p className="text-[10px] font-black uppercase tracking-widest text-white/20">Drop Vision Sync / Chart</p>
+                    </div>
+
+                    <div className="space-y-4">
+                    <label className="text-[9px] font-black uppercase text-white/30 tracking-widest block">Mindset Tags</label>
+                      <div className="flex flex-wrap gap-3">
+                        {['Disciplined', 'FOMO', 'Aggressive', 'Zen', 'Revenge'].map(tag => (
+                          <button key={tag} className="px-4 py-2 bg-white/5 rounded-lg text-[8px] font-black uppercase border border-white/5 hover:border-purple-500 transition-all">
+                            {tag}
                           </button>
                         ))}
                       </div>
                     </div>
 
-                    <div className="h-80 w-full">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <AreaChart data={[
-                          { name: 'W1', val: 4000 }, { name: 'W2', val: 3000 }, 
-                          { name: 'W3', val: 5000 }, { name: 'W4', val: 4500 }, 
-                          { name: 'W5', val: 7000 }, { name: 'W6', val: 12450 }
-                        ]}>
-                          <defs>
-                            <linearGradient id="colorVal" x1="0" y1="0" x2="0" y2="1">
-                              <stop offset="5%" stopColor={theme.primary} stopOpacity={0.3}/>
-                              <stop offset="95%" stopColor={theme.primary} stopOpacity={0}/>
-                            </linearGradient>
-                          </defs>
-                          <XAxis dataKey="name" hide />
-                          <YAxis hide domain={['auto', 'auto']} />
-                          <Tooltip contentStyle={{backgroundColor: '#000', border: 'none', borderRadius: '12px', fontSize: '10px'}} />
-                          <Area type="monotone" dataKey="val" stroke={theme.primary} strokeWidth={4} fillOpacity={1} fill="url(#colorVal)" />
-                        </AreaChart>
-                      </ResponsiveContainer>
+                    <div className="space-y-3">
+                      <label className="text-[9px] font-black uppercase text-white/30 tracking-widest">Psychological Narrative</label>
+                      <textarea rows={6} placeholder="Detailed state of mind during execution..." className="w-full bg-white/5 border border-white/10 rounded-2xl p-5 text-sm font-bold outline-none focus:border-purple-500 transition-all resize-none" />
                     </div>
-                  </div>
-                </div>
-
-                {/* 3. PERFORMANCE DISTRIBUTION (Point A/8) */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-10 xl:col-span-3">
-                  {/* PnL BY DAY OF WEEK */}
-                  <div className="bg-white/5 border border-white/5 p-8 rounded-[40px]">
-                    <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-white/30 mb-8">PnL Distribution (Weekly)</h3>
-                    <div className="h-64">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={[
-                          { day: 'Mon', pnl: 2400 }, { day: 'Tue', pnl: -1100 }, 
-                          { day: 'Wed', pnl: 3200 }, { day: 'Thu', pnl: 4500 }, 
-                          { day: 'Fri', pnl: -800 }
-                        ]}>
-                          <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{fill: '#ffffff20', fontSize: 10}} />
-                          <Tooltip cursor={{fill: 'transparent'}} contentStyle={{backgroundColor: '#000', border: 'none', borderRadius: '12px'}} />
-                          <Bar dataKey="pnl" radius={[6, 6, 0, 0]}>
-                            { [2400, -1100, 3200, 4500, -800].map((entry, index) => (
-                              <Cell key={index} fill={entry > 0 ? '#10b981' : '#f43f5e'} fillOpacity={0.8} />
-                            ))}
-                          </Bar>
-                        </BarChart>
-                      </ResponsiveContainer>
                     </div>
-                  </div>
-
-                  {/* PnL BY ASSET / PAIR */}
-                  <div className="bg-white/5 border border-white/5 p-8 rounded-[40px]">
-                    <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-white/30 mb-8">Asset Performance</h3>
-                    <div className="h-64">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart layout="vertical" data={[
-                          { asset: 'XAUUSD', pnl: 5200 }, { asset: 'EURUSD', pnl: 1800 }, 
-                          { asset: 'BTCUSD', pnl: -1200 }, { asset: 'NAS100', pnl: 2900 }
-                        ]}>
-                          <XAxis type="number" hide />
-                          <YAxis dataKey="asset" type="category" axisLine={false} tickLine={false} tick={{fill: '#ffffff40', fontSize: 10}} width={60} />
-                          <Tooltip cursor={{fill: 'transparent'}} contentStyle={{backgroundColor: '#000', border: 'none', borderRadius: '12px'}} />
-                          <Bar dataKey="pnl" radius={[0, 6, 6, 0]}>
-                            { [5200, 1800, -1200, 2900].map((entry, index) => (
-                              <Cell key={index} fill={entry > 0 ? theme.primary : '#f43f5e'} fillOpacity={0.8} />
-                            ))}
-                          </Bar>
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </div>
-                  </div>
-                </div>
-
-                {/* EXECUTION CALENDAR (Dashboard Only - Point D/1) */}
-                <div className="bg-white/5 border border-white/5 p-10 rounded-[40px] relative overflow-hidden group">
-                  <div className="flex items-center justify-between mb-8">
-                    <div>
-                      <h3 className="text-sm font-black uppercase tracking-widest mb-1">Execution Calendar</h3>
-                      <p className="text-[10px] font-bold text-white/20 uppercase tracking-tighter">Consistency Tracking</p>
-                    </div>
-                    <div className="flex items-center gap-4 text-white/40 text-[10px] font-black uppercase bg-black/40 px-4 py-2 rounded-xl border border-white/5">
-                      <ChevronRight className="rotate-180 cursor-pointer hover:text-white transition-colors" size={14} />
-                      December 2026
-                      <ChevronRight className="cursor-pointer hover:text-white transition-colors" size={14} />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-7 gap-4">
-                    {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
-                      <div key={day} className="text-center text-[8px] font-black uppercase text-white/20 mb-2">{day}</div>
-                    ))}
-                    {Array.from({ length: 31 }).map((_, i) => (
-                      <div key={i} className={`h-24 rounded-2xl border border-white/5 p-3 flex flex-col justify-between transition-all hover:bg-white/10 group/day ${
-                        [12, 15, 22].includes(i) ? 'bg-emerald-500/5 border-emerald-500/20' : 'bg-black/20'
-                      }`}>
-                        <span className="text-[10px] font-bold text-white/20 group-hover/day:text-white transition-colors">{i + 1}</span>
-                        {[12, 15, 22].includes(i) && (
-                          <div className="text-right">
-                            <p className="text-[10px] font-black text-emerald-500">+$242</p>
-                            <p className="text-[7px] font-bold text-white/30 uppercase">2 Trades</p>
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </>
-            )}
-
-            {/* --- SYLLEDGE AI VIEW --- */}
-            {activeTab === 'SYLLEDGE' && (
-              <div className="space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-700">
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
-                  {/* MT5 / BROKER SYNC (Point B/2) */}
-                  <div className="lg:col-span-1 bg-white/5 border border-white/5 p-8 rounded-[40px] space-y-8">
-                    <div>
-                      <h3 className="text-sm font-black uppercase tracking-widest mb-2">Broker Sync</h3>
-                      <p className="text-[10px] font-bold text-white/20 uppercase">Direct MT5 Neural Link</p>
-                    </div>
-                    
-                    <div className="space-y-4">
-                      <div className="space-y-2">
-                        <label className="text-[9px] font-black uppercase text-white/40 tracking-widest">Select Broker</label>
-                        <select className="w-full bg-black/40 border border-white/10 p-4 rounded-2xl text-xs font-bold appearance-none outline-none focus:border-purple-500 transition-all">
-                          <option>IC Markets</option>
-                          <option>Pepperstone</option>
-                          <option>FTMO Server</option>
-                          <option>Custom Server...</option>
-                        </select>
-                      </div>
-                      <div className="space-y-2">
-                        <label className="text-[9px] font-black uppercase text-white/40 tracking-widest">Account ID</label>
-                        <input type="text" placeholder="MT5 Number" className="w-full bg-black/40 border border-white/10 p-4 rounded-2xl text-xs font-bold outline-none focus:border-purple-500 transition-all" />
-                      </div>
-                      <button className="w-full py-4 bg-purple-500 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:scale-[1.02] active:scale-95 transition-all shadow-lg shadow-purple-500/20">
-                        Initialize Sync
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* AI COGNITION FEED */}
-                  <div className="lg:col-span-2 bg-white/5 border border-white/5 p-8 rounded-[40px] flex flex-col justify-between">
-                    <div className="space-y-6">
-                      <div className="flex items-center gap-4">
-                        <div className="w-10 h-10 rounded-xl bg-purple-500/20 flex items-center justify-center text-purple-500">
-                          <Brain size={20} />
-                        </div>
-                        <h3 className="text-xs font-black uppercase tracking-widest">Neural Insights</h3>
-                      </div>
-                      <div className="p-6 bg-black/40 rounded-2xl border border-white/5">
-                        <p className="text-[11px] leading-relaxed text-white/60 italic">"Current data suggests a high correlation between late-Friday sessions and decreased RR. Consider tightening stops during NY Close."</p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* --- BACKTEST VIEW (Point C) --- */}
-            {activeTab === 'BACKTEST' && (
-              <div className="space-y-10 animate-in fade-in zoom-in-95 duration-700">
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
-                  {/* SIMULATION ENGINE (Point C/2) */}
-                  <div className="lg:col-span-1 bg-white/5 border border-white/5 p-8 rounded-[40px] space-y-8">
-                    <div>
-                      <h3 className="text-sm font-black uppercase tracking-widest mb-2">Neural Simulator</h3>
-                      <p className="text-[10px] font-bold text-white/20 uppercase">Stress-test your edge</p>
-                    </div>
-                    
-                    <div className="space-y-6">
-                      <div className="p-10 border-2 border-dashed border-white/5 rounded-[32px] flex flex-col items-center justify-center gap-4 hover:border-purple-500/40 transition-all cursor-pointer group">
-                        <Download size={24} className="text-white/20 group-hover:text-purple-500 transition-colors" />
-                        <p className="text-[9px] font-black uppercase tracking-widest text-white/40">Upload CSV / JSON</p>
-                      </div>
-                      
-                      <div className="space-y-4">
-                        <div className="flex justify-between items-center">
-                          <span className="text-[9px] font-black uppercase text-white/40">Confidence Threshold</span>
-                          <span className="text-[10px] font-black text-purple-500">85%</span>
-                        </div>
-                        <input type="range" className="w-full h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-purple-500" />
-                      </div>
-
-                      <button className="w-full py-5 bg-white text-black rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] hover:bg-purple-500 hover:text-white transition-all">
-                        Run Simulation
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* SIMULATION RESULTS */}
-                  <div className="lg:col-span-2 bg-white/5 border border-white/5 p-8 rounded-[40px] flex items-center justify-center border-dashed">
-                    <div className="text-center space-y-4">
-                      <div className="w-16 h-16 rounded-full bg-white/5 flex items-center justify-center mx-auto">
-                        <Activity size={24} className="text-white/10" />
-                      </div>
-                      <p className="text-[10px] font-black uppercase tracking-widest text-white/20">Waiting for Data Input...</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* --- PLAYBOOK VIEW --- */}
-            {activeTab === 'PLAYBOOK' && (
-              <div className="space-y-10 animate-in fade-in duration-700">
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
-                  {/* STRATEGY VAULT (Point D/2) */}
-                  <div className="lg:col-span-1 bg-white/5 border border-white/5 p-8 rounded-[40px] space-y-8">
-                    <div>
-                      <h3 className="text-sm font-black uppercase tracking-widest mb-2">Strategy Vault</h3>
-                      <p className="text-[10px] font-bold text-white/20 uppercase">Define Your Edge</p>
-                    </div>
-                    
-                    <div className="space-y-4">
-                      <div className="relative">
-                        <input 
-                          type="text" 
-                          placeholder="Enter New Strategy..." 
-                          className="w-full bg-black/40 border border-white/10 p-4 rounded-2xl text-xs font-bold outline-none focus:border-purple-500 transition-all pr-12"
-                        />
-                        <button className="absolute right-2 top-2 bottom-2 px-3 bg-white/10 rounded-xl hover:bg-purple-500 transition-all">
-                          <Plus size={16} />
-                        </button>
-                      </div>
-                      
-                      <div className="space-y-2 max-h-64 overflow-y-auto custom-scroll pr-2">
-                        {['Mean Reversion', 'Breakout Alpha', 'FVG Expansion'].map((strat) => (
-                          <div key={strat} className="flex items-center justify-between p-4 bg-white/5 border border-white/5 rounded-xl hover:border-purple-500/30 transition-all cursor-pointer group">
-                            <span className="text-[10px] font-black uppercase text-white/60">{strat}</span>
-                            <ChevronRight size={14} className="text-white/20 group-hover:translate-x-1 transition-transform" />
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* STRATEGY ANALYTICS PANEL */}
-                  <div className="lg:col-span-2 bg-white/5 border border-white/5 p-8 rounded-[40px]">
-                  <div className="h-full flex flex-col justify-center items-center border-2 border-dashed border-white/5 rounded-[32px] text-white/10">
-                      <BarChart4 size={48} className="mb-4 opacity-20" />
-                      <p className="text-[10px] font-black uppercase tracking-widest">Select Strategy for Deep Analytics</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* --- SETTINGS VIEW (Point E) --- */}
-            {activeTab === 'SETTINGS' && (
-              <div className="grid grid-cols-1 lg:grid-cols-4 gap-10 animate-in fade-in slide-in-from-right-4 duration-700">
-                {/* SETTINGS NAV */}
-                <div className="lg:col-span-1 space-y-2">
-                  {['Account', 'Security', 'Appearance', 'Billing', 'Information'].map((sect) => (
-                    <button 
-                      key={sect} 
-                      onClick={() => setActiveSettingTab(sect)}
-                      className={`w-full flex items-center justify-between p-5 rounded-2xl transition-all group ${activeSettingTab === sect ? 'bg-purple-500 text-white shadow-lg shadow-purple-500/20' : 'text-white/40 hover:bg-white/5'}`}
-                    >
-                      <span className="text-[10px] font-black uppercase tracking-widest">{sect}</span>
-                      <ChevronRight size={14} className={`transition-transform ${activeSettingTab === sect ? 'translate-x-1' : 'opacity-0 group-hover:opacity-100'}`} />
-                    </button>
-                  ))}
-                </div>
-
-                {/* SETTINGS CONTENT */}
-                <div className="lg:col-span-3 space-y-8">
-                  {/* INFORMATION SECTION (Point E/4) */}
-                  {activeSettingTab === 'Information' && (
-                    <div className="bg-white/5 border border-white/5 p-10 rounded-[40px] space-y-8">
-                      <div>
-                        <h4 className="text-sm font-black uppercase tracking-widest mb-1">User Information</h4>
-                        <p className="text-[10px] font-bold text-white/20 uppercase">Manage your identity and credentials</p>
-                      </div>
-
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                        <div className="space-y-3">
-                          <label className="text-[9px] font-black uppercase text-white/30 tracking-widest px-1">Display Name</label>
-                          <input type="text" className="w-full bg-black/40 border border-white/10 p-4 rounded-2xl text-xs font-bold outline-none focus:border-purple-500 transition-all" defaultValue="Harry" />
-                        </div>
-                        <div className="space-y-3">
-                          <label className="text-[9px] font-black uppercase text-white/30 tracking-widest px-1">Email Address</label>
-                          <input type="email" className="w-full bg-black/40 border border-white/10 p-4 rounded-2xl text-xs font-bold outline-none focus:border-purple-500 transition-all" defaultValue="harry@neural.ai" />
-                        </div>
-                        <div className="space-y-3 md:col-span-2">
-                          <label className="text-[9px] font-black uppercase text-white/30 tracking-widest px-1">New Password</label>
-                          <input type="password" placeholder="••••••••••••" className="w-full bg-black/40 border border-white/10 p-4 rounded-2xl text-xs font-bold outline-none focus:border-purple-500 transition-all" />
-                        </div>
-                      </div>
-                      <button className="px-10 py-4 bg-white text-black rounded-2xl text-[10px] font-black uppercase tracking-widest hover:scale-[1.02] transition-all">
-                        Save Changes
-                      </button>
-                    </div>
-                  )}
-
-                  {/* APPEARANCE SECTION (Point E/2) */}
-                  {activeSettingTab === 'Appearance' && (
-                    <div className="bg-white/5 border border-white/5 p-10 rounded-[40px] space-y-10">
-                      <div>
-                        <h4 className="text-sm font-black uppercase tracking-widest mb-1">UI Customization</h4>
-                        <p className="text-[10px] font-bold text-white/20 uppercase">Combine themes and neural accents</p>
-                      </div>
-                      <div className="grid grid-cols-2 gap-6">
-                         <button onClick={() => setTheme({...theme, mode: 'dark'})} className={`flex flex-col items-center gap-4 p-8 rounded-[32px] border transition-all ${theme.mode === 'dark' ? 'border-purple-500 bg-purple-500/10' : 'border-white/5 bg-black/20 hover:bg-white/5'}`}>
-                           <Moon size={24} className={theme.mode === 'dark' ? 'text-purple-500' : 'text-white/20'} />
-                           <p className="text-[10px] font-black uppercase tracking-widest">Deep Space (Dark)</p>
-                         </button>
-                         <button onClick={() => setTheme({...theme, mode: 'light'})} className={`flex flex-col items-center gap-4 p-8 rounded-[32px] border transition-all ${theme.mode === 'light' ? 'border-purple-500 bg-purple-500/10' : 'border-white/5 bg-black/20 hover:bg-white/5'}`}>
-                           <Sun size={24} className={theme.mode === 'light' ? 'text-purple-500' : 'text-white/20'} />
-                           <p className="text-[10px] font-black uppercase tracking-widest">Pure Light (Light)</p>
-                         </button>
-                      </div>
-                      <div className="space-y-6">
-                        <p className="text-[9px] font-black text-white/30 uppercase tracking-[0.3em]">Accent Palette</p>
-                        <div className="flex flex-wrap gap-4">
-                          {['#a855f7', '#10b981', '#3b82f6', '#f43f5e', '#f59e0b', '#ec4899', '#ffffff'].map(c => (
-                            <button key={c} onClick={() => setTheme({...theme, primary: c})} className={`w-12 h-12 rounded-2xl border-4 transition-transform hover:scale-110 ${theme.primary === c ? 'border-white' : 'border-transparent'}`} style={{ backgroundColor: c }} />
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* SECURITY & 2FA SECTION (Point E/3) */}
-                  {activeSettingTab === 'Security' && (
-                    <div className="bg-white/5 border border-white/5 p-10 rounded-[40px] space-y-8">
-                      <div>
-                        <h4 className="text-sm font-black uppercase tracking-widest mb-1">Neural Security</h4>
-                        <p className="text-[10px] font-bold text-white/20 uppercase">Protect your terminal access</p>
-                      </div>
-                      <div className="p-8 bg-black/40 rounded-[32px] border border-white/5 flex items-center justify-between">
-                        <div className="flex items-center gap-6">
-                          <div className="w-14 h-14 rounded-2xl bg-emerald-500/10 flex items-center justify-center text-emerald-500">
-                            <Fingerprint size={28} />
-                          </div>
-                          <div>
-                            <p className="text-xs font-black uppercase mb-1">Two-Factor Authentication</p>
-                            <p className="text-[10px] text-white/40 font-bold uppercase">Strongest protection via Authenticator App</p>
-                          </div>
-                        </div>
-                        <button className="px-8 py-3 bg-emerald-500 text-black rounded-xl text-[10px] font-black uppercase tracking-widest">Configure</button>
-                      </div>
-                    </div>
-                  )}
-
-</div>
-              </div>
-            )}
-          </div>
-        </div>
-      </main>
-
-      {/* QUICK LOG MODAL */}
-      {isLogModalOpen && (
-        <div className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-xl flex items-center justify-center p-6 animate-in fade-in duration-300">
-          <div className="bg-[#0A0C10] border border-white/10 w-full max-w-2xl rounded-[40px] overflow-hidden shadow-2xl">
-            <div className="p-10 border-b border-white/5 flex justify-between items-center">
-              <div>
-                <h3 className="text-xl font-black italic uppercase tracking-tighter">Commit Position</h3>
-                <p className="text-[10px] font-bold text-white/20 uppercase tracking-widest mt-1">Manual Ledger Entry</p>
-              </div>
-              <button onClick={() => setIsLogModalOpen(false)} className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center hover:bg-white/10 transition-all">
-                <X size={20} />
-              </button>
-            </div>
-
-            <div className="p-10 space-y-8 max-h-[60vh] overflow-y-auto custom-scroll">
-              <div className="grid grid-cols-2 gap-6">
-                <div className="space-y-3">
-                  <label className="text-[9px] font-black uppercase text-white/30 tracking-widest px-1">Entry Date</label>
-                  <input type="date" className="w-full bg-white/5 border border-white/10 p-4 rounded-2xl text-xs font-bold outline-none focus:border-purple-500 transition-all text-white/60" />
-                </div>
-                <div className="space-y-3">
-                  <label className="text-[9px] font-black uppercase text-white/30 tracking-widest px-1">Asset Pair</label>
-                  <input type="text" placeholder="e.g. XAUUSD" className="w-full bg-white/5 border border-white/10 p-4 rounded-2xl text-xs font-bold outline-none focus:border-purple-500 transition-all" />
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-6">
-              <div className="space-y-3">
-                  <label className="text-[9px] font-black uppercase text-white/30 tracking-widest px-1">Strategy</label>
-                  <select className="w-full bg-white/5 border border-white/10 p-4 rounded-2xl text-xs font-bold appearance-none outline-none focus:border-purple-500 transition-all">
-                    <option>Mean Reversion</option>
-                    <option>Breakout Alpha</option>
-                    <option>FVG Expansion</option>
-                  </select>
-                </div>
-                <div className="space-y-3">
-                  <label className="text-[9px] font-black uppercase text-white/30 tracking-widest px-1">Position Type</label>
-                  <div className="flex gap-4">
-                    <button className="flex-1 py-3 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-emerald-500 text-[10px] font-black uppercase tracking-widest">Long</button>
-                    <button className="flex-1 py-3 bg-rose-500/10 border border-rose-500/20 rounded-xl text-rose-500 text-[10px] font-black uppercase tracking-widest">Short</button>
-                  </div>
-                </div>
-              </div>
-            </div>
+             
 
-            {/* MODAL FOOTER */}
-            <div className="p-10 border-t border-white/5 bg-black/40 flex gap-6">
-              <button 
-                onClick={() => setIsLogModalOpen(false)}
-                className="flex-1 py-5 rounded-[20px] bg-white/5 text-[10px] font-black uppercase tracking-widest hover:bg-white/10 transition-all"
-              >
-                Discard
-              </button>
-              <button className="flex-[2] py-5 rounded-[20px] bg-purple-500 text-white text-[10px] font-black uppercase tracking-widest hover:scale-[1.02] transition-all shadow-xl shadow-purple-500/20">
-                Commit to Ledger
-              </button>
+              <div className="p-10 border-t border-white/5 flex gap-6 bg-white/[0.02]">
+                <button className="flex-1 py-5 bg-white text-black rounded-[20px] text-xs font-black uppercase tracking-[0.2em] shadow-xl hover:scale-[1.02] active:scale-95 transition-all">
+                  Commit to Sylledge
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
-
-      {/* AI FLOATING ACTION BUTTON */}
+        )}
+      {/* FLOATING ACTION BUTTON (Neural FAB) */}
       <button 
-        onClick={() => setActiveTab('SYLLEDGE')}
-        className="fixed bottom-10 right-10 w-16 h-16 rounded-3xl bg-white text-black flex items-center justify-center shadow-[0_0_50px_rgba(255,255,255,0.3)] hover:scale-110 active:scale-95 transition-all z-40 group"
-      >
-        <Sparkles size={24} className="group-hover:animate-pulse" />
-        <div className="absolute right-full mr-4 px-4 py-2 bg-black border border-white/10 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap">
-          <p className="text-[8px] font-black uppercase tracking-widest">Ask Sylledge AI</p>
-        </div>
-      </button>
+          onClick={() => setIsLogModalOpen(true)}
+          className="fixed bottom-10 right-10 w-20 h-20 rounded-full bg-white text-black flex items-center justify-center shadow-[0_20px_50px_rgba(255,255,255,0.3)] hover:scale-110 active:scale-90 transition-all z-40 group"
+        >
+          <Plus size={32} strokeWidth={3} className="group-hover:rotate-90 transition-transform duration-500" />
+          <div className="absolute inset-0 rounded-full bg-white animate-ping opacity-20 pointer-events-none" />
+        </button>
 
-    </div>
+      </main> 
+    </div> 
+  </div> 
   );
 };
 
