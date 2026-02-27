@@ -4,7 +4,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '../supabaseClient';
 import { 
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, 
-  LineChart, Line, BarChart, Bar, Cell, PieChart, Pie
+  LineChart, Line, BarChart, Bar, Cell, PieChart, Pie,
+  Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis 
 } from 'recharts';
 import {
   Plus, X, Zap, Cpu, Settings, Palette, Brain, Terminal,
@@ -180,6 +181,7 @@ const TradingTerminal = () => {
             </div>
           </div>
         </header>
+        
 
         {/* DYNAMIC VIEWPORT */}
         <div className="flex-1 overflow-y-auto scrollbar-hide p-10 custom-scroll">
@@ -220,61 +222,95 @@ const TradingTerminal = () => {
                     ))}
                   </div>
 
-                  {/* MAIN CHARTING SECTION */}
+                  {/* MAIN CHARTING SECTION & NEURAL RADAR */}
                   <div className="grid grid-cols-1 xl:grid-cols-3 gap-10">
+                    {/* ZELLA-STYLE RADAR SCORE */}
+                    <div className="bg-white/5 border border-white/5 p-8 rounded-[40px] flex flex-col items-center justify-center">
+                      <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-white/30 mb-8 self-start">Neural Score</h3>
+                      <div className="w-full h-64">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <RadarChart cx="50%" cy="50%" outerRadius="80%" data={[
+                            { subject: 'Win %', A: 80 },
+                            { subject: 'RR Ratio', A: 65 },
+                            { subject: 'Consistency', A: 90 },
+                            { subject: 'Risk Mgmt', A: 70 },
+                          ]}>
+                            <PolarGrid stroke="#ffffff10" />
+                            <PolarAngleAxis dataKey="subject" tick={{ fill: '#ffffff40', fontSize: 8 }} />
+                            <Radar name="Trader" dataKey="A" stroke={theme.primary} fill={theme.primary} fillOpacity={0.4} />
+                          </RadarChart>
+                        </ResponsiveContainer>
+                      </div>
+                      <div className="mt-4 text-center">
+                        <span className="text-4xl font-black italic tracking-tighter text-emerald-500">81</span>
+                        <p className="text-[8px] font-bold text-white/20 uppercase mt-1">+1.2 vs Last Week</p>
+                      </div>
+                    </div>
+
+                    {/* UPDATED EQUITY CURVE */}
                     <div className="xl:col-span-2 bg-white/5 border border-white/5 p-10 rounded-[40px] relative overflow-hidden h-[500px]">
                       <div className="flex items-center justify-between mb-10">
                         <div>
                           <h3 className="text-sm font-black uppercase tracking-widest mb-1">Cumulative Equity Curve</h3>
                           <p className="text-[10px] font-bold text-white/20 uppercase tracking-tighter">Real-time Performance Sync</p>
                         </div>
-                        <div className="flex gap-2">
-                          {['1D', '1W', '1M', 'ALL'].map(t => (
-                            <button key={t} className="px-4 py-2 rounded-xl bg-white/5 text-[9px] font-black hover:bg-white/10 transition-colors">{t}</button>
-                            ))}
-                          </div>
-                        </div>
-                        
-                        <div className={`w-full h-full pb-16 transition-all duration-1000 ${isPrivacyMode ? 'blur-2xl opacity-20' : 'opacity-100'}`}>
-                          <ResponsiveContainer width="100%" height="100%">
-                            <AreaChart data={[
-                              {t: '08:00', v: 10000}, {t: '10:00', v: 10500}, {t: '12:00', v: 10200}, 
-                              {t: '14:00', v: 11800}, {t: '16:00', v: 12450}
-                            ]}>
-                              <defs>
-                                <linearGradient id="colorPnL" x1="0" y1="0" x2="0" y2="1">
-                                  <stop offset="5%" stopColor={theme.primary} stopOpacity={0.3}/>
-                                  <stop offset="95%" stopColor={theme.primary} stopOpacity={0}/>
-                                </linearGradient>
-                                </defs>
-                            <XAxis dataKey="t" hide />
-                            <YAxis hide domain={['dataMin - 100', 'dataMax + 100']} />
-                            <Tooltip 
-                              contentStyle={{ backgroundColor: '#0A0C10', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '16px' }}
-                              itemStyle={{ color: '#fff', fontSize: '10px', fontWeight: '900' }}
-                            />
-                            <Area type="monotone" dataKey="v" stroke={theme.primary} strokeWidth={4} fillOpacity={1} fill="url(#colorPnL)" />
-                          </AreaChart>
-                        </ResponsiveContainer>
-                      </div>
-                    </div>
-
-                    <div className="space-y-10">
-                      {/* SYLLEDGE PREVIEW CARD */}
-                      <div className="bg-gradient-to-br from-purple-500 to-blue-600 p-10 rounded-[40px] relative overflow-hidden group shadow-[0_20px_50px_rgba(168,85,247,0.2)]">
-                        <Brain className="absolute -right-4 -bottom-4 text-white/10 w-40 h-40 group-hover:scale-110 transition-transform duration-700" />
-                        <h3 className="text-xl font-black italic tracking-tighter text-white mb-2 uppercase">SYLLEDGE AI</h3>
-                        <p className="text-[10px] font-bold text-white/70 uppercase tracking-widest leading-relaxed mb-6">
-                          Neural pattern recognition detects a 84% probability of continuation in your current setup.
-                        </p>
-                        <button className="px-6 py-3 bg-white text-black text-[9px] font-black uppercase rounded-xl tracking-widest shadow-xl">Analyze Alpha</button>
                       </div>
                       
-                      {/* MORE SMALL METRICS CARDS WOULD GO HERE */}
+                      <div className={`w-full h-full pb-16 transition-all duration-1000 ${isPrivacyMode ? 'blur-2xl opacity-20' : 'opacity-100'}`}>
+                        <ResponsiveContainer width="100%" height="100%">
+                          <AreaChart data={[
+                            {t: '08:00', v: 10000}, {t: '10:00', v: 10500}, {t: '12:00', v: 9800}, 
+                            {t: '14:00', v: 11800}, {t: '16:00', v: 12450}
+                          ]}>
+                            <defs>
+                              <linearGradient id="colorPnL" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/>
+                                <stop offset="50%" stopColor="#10b981" stopOpacity={0}/>
+                                <stop offset="51%" stopColor="#f43f5e" stopOpacity={0}/>
+                                <stop offset="95%" stopColor="#f43f5e" stopOpacity={0.3}/>
+                              </linearGradient>
+                            </defs>
+                            <XAxis dataKey="t" hide />
+                            <YAxis hide domain={['dataMin - 100', 'dataMax + 100']} />
+                            <Tooltip
+                            contentStyle={{ backgroundColor: '#0A0C10', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '16px' }}
+                            itemStyle={{ color: '#fff', fontSize: '10px', fontWeight: '900' }}
+                          />
+                          <Area type="monotone" dataKey="v" stroke={theme.primary} strokeWidth={4} fillOpacity={1} fill="url(#colorPnL)" />
+                        </AreaChart>
+                      </ResponsiveContainer>
                     </div>
                   </div>
+                </div>
                 </>
               )}
+              {/* EXECUTION CALENDAR SECTION */}
+              <div className="bg-white/5 border border-white/5 p-10 rounded-[40px]">
+                    <div className="flex items-center justify-between mb-8">
+                      <h3 className="text-sm font-black uppercase tracking-widest">Execution Calendar</h3>
+                      <div className="flex items-center gap-4 text-white/30 text-[10px] font-black uppercase">
+                         December 2026
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-7 gap-4">
+                      {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
+                        <div key={day} className="text-center text-[8px] font-black uppercase text-white/20 mb-2">{day}</div>
+                      ))}
+                      {Array.from({ length: 31 }).map((_, i) => (
+                        <div key={i} className={`h-24 rounded-2xl border border-white/5 p-3 flex flex-col justify-between transition-all hover:bg-white/5 ${
+                          [12, 15, 22].includes(i) ? 'bg-emerald-500/10 border-emerald-500/20' : 'bg-black/20'
+                        }`}>
+                          <span className="text-[10px] font-bold text-white/20">{i + 1}</span>
+                          {[12, 15, 22].includes(i) && (
+                            <div className="text-right">
+                              <p className="text-[10px] font-black text-emerald-500">+$242</p>
+                              <p className="text-[7px] font-bold text-white/30 uppercase">2 Trades</p>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
               {activeTab === 'SYLLEDGE' && (
                 <div className="space-y-8 animate-in fade-in duration-700">
                   {/* SYLLEDGE HEADER & CONTROLS */}
