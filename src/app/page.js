@@ -68,17 +68,19 @@ const [filters, setFilters] = useState({
   if (!hasMounted) return null;
 
   return (
-    <div className="min-h-screen bg-[#020408] text-white font-sans selection:bg-purple-500/30 overflow-x-hidden relative">
-      {/* Neural Background Engine */}
-      <div 
-        className="fixed inset-0 pointer-events-none opacity-20 transition-opacity duration-1000"
-        style={{ 
-          background: `radial-gradient(600px circle at ${mousePos.x}% ${mousePos.y}%, ${theme.primary}25, transparent 80%)` 
-        }}
-      />
-      <div className="fixed inset-0 pointer-events-none bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 mix-blend-overlay" />
+    
+    <div className="min-h-screen w-full bg-[#020408] text-white font-sans selection:bg-purple-500/30 overflow-x-hidden relative">
+    {/* Neural Background Engine */}
+    <div 
+      className="fixed inset-0 pointer-events-none opacity-20 transition-opacity duration-1000"
+      style={{ 
+        background: `radial-gradient(600px circle at ${mousePos.x}% ${mousePos.y}%, ${theme.primary}25, transparent 80%)` 
+      }}
+    />
+    <div className="fixed inset-0 pointer-events-none bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 mix-blend-overlay" />
 
-      <div className="relative z-10 flex h-screen overflow-hidden">
+    {/* This is the inner flex wrapper that holds the sidebar and main content */}
+    <div className="relative z-10 flex min-h-screen w-full">
         
         {/* ADAPTIVE SIDEBAR (Sliver to Expanded) */}
         <aside 
@@ -149,8 +151,8 @@ const [filters, setFilters] = useState({
   ))}
 </nav>
 
-       {/* MAIN CONTENT AREA */}
-<main className="flex-1 min-h-screen transition-all duration-500 md:pl-24 lg:pl-24">
+{/* MAIN CONTENT AREA */}
+<main className="flex-1 min-h-screen transition-all duration-500 pl-0 md:pl-24 lg:pl-24">
   <div className="p-4 md:p-10 pb-32 md:pb-10 max-w-[1600px] mx-auto space-y-10">
           
           {/* TOP NAVIGATION / HEADER */}
@@ -214,7 +216,7 @@ const [filters, setFilters] = useState({
               {activeTab === 'DASHBOARD' && (
                 <>
                   {/* KPI GRID */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
                     {[
                       { label: 'Neural Alpha', value: sessionMetrics.alpha + '%', sub: '+2.4% vs Bench', icon: <Zap size={16}/>, color: 'text-purple-500' },
                       { label: 'Session PnL', value: '$' + sessionMetrics.pnl.toLocaleString(), sub: 'Today', icon: <TrendingUp size={16}/>, color: 'text-emerald-500' },
@@ -238,7 +240,7 @@ const [filters, setFilters] = useState({
 
                   {/* DATA VISUALIZATION ROW */}
                   <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    <div className="lg:col-span-2 bg-white/5 border border-white/5 rounded-[32px] p-8 h-[450px] relative overflow-hidden">
+  <div className="lg:col-span-2 bg-white/5 border border-white/5 rounded-[32px] p-4 md:p-8 h-[350px] md:h-[450px] relative overflow-hidden">
                       <div className="flex items-center justify-between mb-8">
                         <div className="flex items-center gap-4">
                           <div className="w-10 h-10 rounded-xl bg-purple-500/10 flex items-center justify-center text-purple-500">
@@ -304,7 +306,7 @@ const [filters, setFilters] = useState({
 
                   <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
                     {/* UPGRADED EXECUTION MATRIX */}
-                    <div className="lg:col-span-3 bg-white/5 border border-white/5 rounded-[32px] p-8">
+                    <div className="col-span-1 lg:col-span-3 bg-white/5 border border-white/5 rounded-[32px] p-4 md:p-8">
                       <div className="flex items-center justify-between mb-8">
                         <div className="flex items-center gap-4">
                           <Calendar size={20} className="text-purple-500" />
