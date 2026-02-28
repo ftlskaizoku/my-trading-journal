@@ -36,6 +36,12 @@ const TradingTerminal = () => {
   });
   const [liveAccountData, setLiveAccountData] = useState(null);
 const [isSyncing, setIsSyncing] = useState(false);
+const [strategyRules, setStrategyRules] = useState({
+  maxDrawdown: 5,
+  minRR: 2,
+  maxTradesPerDay: 3,
+  stopLossRequired: true
+});
   const [chartData, setChartData] = useState([
     { name: 'Mon', val: 4000 }, { name: 'Tue', val: 3000 }, { name: 'Wed', val: 5500 },
     { name: 'Thu', val: 4800 }, { name: 'Fri', val: 7000 }, { name: 'Sat', val: 6800 }, { name: 'Sun', val: 9000 }
@@ -96,7 +102,7 @@ const syncLiveMT5 = async () => {
     
     const data = await response.json();
     
-    
+
     // Convert MT5 data into your Chart format
     const liveTrades = data.map((trade) => ({
       name: new Date(trade.doneTime).toLocaleDateString('en-US', { weekday: 'short' }),
@@ -137,7 +143,25 @@ const handleFileUpload = (e) => {
     }
   };
   reader.readAsText(file);
-};
+}
+const stats = useMemo(() => {
+  if (chartData.length === 0) return { winRate: 0, profitFactor: 0, optimizationScore: 0 };
+
+  const wins = chartData.filter(t => t.val > 0);
+  const losses = chartData.filter(t => t.val < 0);
+  
+  // Advanced Optimization: Check for RR violations
+  // (Assuming your CSV/API eventually includes Risk vs Reward data)
+  const rrViolations = chartData.filter(t => t.riskReward < strategyRules.minRR).length;
+  const optimizationScore = Math.max(0, 100 - (rrViolations * 10));
+
+  return {
+    winRate: ((wins.length / chartData.length) * 100).toFixed(1),
+    profitFactor: (wins.reduce((s, t) => s + t.val, 0) / Math.abs(losses.reduce((s, t) => s + t.val, 0) || 1)).toFixed(2),
+    optimizationScore,
+    totalTrades: chartData.length
+  };
+}, [chartData, strategyRules]);
   const [sessionMetrics, setSessionMetrics] = useState({
     alpha: 94.2,
     pnl: 12450,
@@ -572,20 +596,21 @@ const handleFileUpload = (e) => {
     </div>
 
     {/* SUB-VISUALIZATION: MINI KPI CARDS */}
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-      {[
-        { label: 'Edge Score', val: '88%', sub: filters.asset },
-        { label: 'Profit Factor', val: '2.4', sub: filters.strategy },
-        { label: 'Avg RR', val: '1:3.2', sub: 'Calculated' },
-        { label: 'Expectancy', val: '$420', sub: 'Per Trade' }
-      ].map((stat, i) => (
-        <div key={i} className="p-5 bg-white/5 border border-white/5 rounded-2xl">
-          <p className="text-[7px] font-black text-purple-500 uppercase tracking-widest mb-1">{stat.label}</p>
-          <p className="text-xl font-black italic tracking-tighter">{stat.val}</p>
-          <p className="text-[8px] font-bold text-white/20 uppercase mt-1">{stat.sub}</p>
-        </div>
-      ))}
+{/* Update this block in your SYLLEDGE tab */}
+<div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+  {[
+    { label: 'Win Probability', val: `${stats.winRate}%`, sub: `+${stats.totalTrades} SAMPLES` },
+    { label: 'Profit Factor', val: stats.profitFactor, sub: 'LIVE DATA' },
+    { label: 'Avg RR', val: '1:3.2', sub: 'Calculated' },
+    { label: 'Expectancy', val: '$420', sub: 'Per Trade' }
+  ].map((stat, i) => (
+    <div key={i} className="p-5 bg-white/5 border border-white/5 rounded-2xl">
+      <p className="text-[7px] font-black text-purple-500 uppercase tracking-widest mb-1">{stat.label}</p>
+      <p className="text-xl font-black italic tracking-tighter">{stat.val}</p>
+      <p className="text-[8px] font-bold text-white/20 uppercase mt-1">{stat.sub}</p>
     </div>
+  ))}
+</div>
 
     {/* TABLE SECTION */}
     <div className="bg-white/5 border border-white/5 rounded-[32px] overflow-hidden">
@@ -678,6 +703,42 @@ const handleFileUpload = (e) => {
                              <p className="text-sm font-black text-emerald-500">12 Days</p>
                           </div>
                        </div>
+                       {/* INSERT THE NEW SECTION HERE */}
+<div className="mt-10 pt-10 border-t border-white/5 space-y-8">
+  <div>
+    <label className="text-[10px] font-black uppercase tracking-widest text-purple-500 mb-4 block">
+      Strategy Narrative
+    </label>
+    <textarea 
+      placeholder="Explain your setup logic (e.g., 'ICT Silver Bullet at FVG')..."
+      className="w-full h-32 bg-white/5 border border-white/10 rounded-[24px] p-6 text-xs font-medium focus:outline-none focus:border-purple-500 transition-all resize-none placeholder:text-white/10"
+    />
+  </div>
+
+  <div>
+    <label className="text-[10px] font-black uppercase tracking-widest text-purple-500 mb-4 block">
+      Neural Setup Evidence (Images)
+    </label>
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <label className="aspect-video rounded-[24px] border-2 border-dashed border-white/10 flex flex-col items-center justify-center cursor-pointer hover:bg-white/5 transition-all group overflow-hidden relative">
+        {entryImage ? (
+           <img src={URL.createObjectURL(entryImage)} className="w-full h-full object-cover" alt="Preview" />
+        ) : (
+          <>
+            <Upload className="text-white/20 group-hover:text-purple-500 mb-3" size={28} />
+            <span className="text-[10px] font-black uppercase text-white/20 group-hover:text-white tracking-widest">Upload Entry Chart</span>
+          </>
+        )}
+        <input type="file" className="hidden" onChange={(e) => setEntryImage(e.target.files[0])} />
+      </label>
+      
+      <div className="aspect-video rounded-[24px] bg-white/5 border border-white/10 flex flex-col items-center justify-center border-dashed">
+        <ImageIcon className="text-white/5 mb-2" size={32} />
+        <p className="text-[9px] font-black text-white/10 uppercase">Exit Analysis Preview</p>
+      </div>
+    </div>
+  </div>
+</div>
                     </div>
                   </div>
                 </div>
