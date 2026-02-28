@@ -25,6 +25,7 @@ const TradingTerminal = () => {
   const [isPrivacyMode, setIsPrivacyMode] = useState(false);
   const [isSidebarExpanded, setIsSidebarExpanded] = useState(false);
   const [isLogModalOpen, setIsLogModalOpen] = useState(false);
+  const [currentDate, setCurrentDate] = useState(new Date());
 
   // Appearance Preferences
   const [theme, setTheme] = useState({
@@ -167,11 +168,14 @@ const TradingTerminal = () => {
                 <span className="text-[10px] font-black uppercase tracking-[0.2em]">New Position</span>
               </button>
             
-              <div className="w-12 h-12 rounded-2xl border border-white/10 bg-gradient-to-br from-white/10 to-transparent p-[1px]">
-                <div className="w-full h-full rounded-2xl bg-[#020408] flex items-center justify-center overflow-hidden">
-                   <User size={20} className="text-white/40" />
-                </div>
-              </div>
+              <button 
+  onClick={() => setActiveTab('SETTINGS')}
+  className="w-12 h-12 rounded-2xl border border-white/10 bg-gradient-to-br from-white/10 to-transparent p-[1px] hover:border-purple-500/50 transition-all hover:scale-105 active:scale-95 group"
+>
+  <div className="w-full h-full rounded-2xl bg-[#020408] flex items-center justify-center overflow-hidden group-hover:bg-purple-500/10 transition-colors">
+     <User size={20} className="text-white/40 group-hover:text-purple-500 transition-colors" />
+  </div>
+</button>
             </div>
           </header>
 
@@ -271,38 +275,98 @@ const TradingTerminal = () => {
                   {/* Future monetization banner or premium insights carousel goes here */}
 
                   <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+                    {/* UPGRADED EXECUTION MATRIX */}
                     <div className="lg:col-span-3 bg-white/5 border border-white/5 rounded-[32px] p-8">
-                       <div className="flex items-center gap-4 mb-8">
+                      <div className="flex items-center justify-between mb-8">
+                        <div className="flex items-center gap-4">
                           <Calendar size={20} className="text-purple-500" />
-                          <h3 className="text-xs font-black uppercase tracking-[0.3em]">Execution Calendar</h3>
-                       </div>
-                       <div className="grid grid-cols-7 gap-2">
-                         {[...Array(31)].map((_, i) => (
-                           <div key={i} className="aspect-square rounded-xl bg-white/5 border border-white/5 flex flex-col items-center justify-center group hover:border-purple-500/50 transition-all cursor-crosshair">
-                             <span className="text-[8px] font-bold text-white/20 mb-1">{i + 1}</span>
-                             {i % 3 === 0 ? (
-                               <div className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]" />
-                             ) : i % 7 === 0 ? (
-                               <div className="w-2 h-2 rounded-full bg-rose-500 shadow-[0_0_10px_rgba(244,63,94,0.5)]" />
-                             ) : null}
-                           </div>
-                         ))}
-                       </div>
+                          <h3 className="text-xs font-black uppercase tracking-[0.3em]">Execution Matrix</h3>
+                        </div>
+                        
+                        {/* MONTH NAVIGATION */}
+                        <div className="flex items-center gap-4 bg-white/5 rounded-xl px-4 py-2 border border-white/5">
+                          <button 
+                            onClick={() => setCurrentDate(new Date(currentDate.setMonth(currentDate.getMonth() - 1)))}
+                            className="hover:text-purple-500 transition-colors"
+                          >
+                            <ChevronRight size={16} className="rotate-180" />
+                          </button>
+                          <span className="text-[10px] font-black uppercase tracking-widest min-w-[100px] text-center">
+                            {currentDate.toLocaleString('default', { month: 'long', year: 'numeric' })}
+                          </span>
+                          <button 
+                            onClick={() => setCurrentDate(new Date(currentDate.setMonth(currentDate.getMonth() + 1)))}
+                            className="hover:text-purple-500 transition-colors"
+                          >
+                            <ChevronRight size={16} />
+                          </button>
+                          </div>
+                      </div>
+
+                      {/* CALENDAR GRID */}
+                      <div className="grid grid-cols-7 gap-3">
+                      {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
+  <div key={day} className="text-center text-[10px] font-black text-white/60 uppercase tracking-[0.2em] mb-4 bg-white/5 py-2 rounded-lg border border-white/5">
+    {day}
+  </div>
+))}
+                        {Array.from({ length: new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0).getDate() }).map((_, i) => {
+  const day = i + 1;
+  const hasTrades = day % 3 === 0; 
+  const dailyPnL = hasTrades ? (day % 2 === 0 ? 420 : -150) : 0;
+  const tradeCount = hasTrades ? Math.floor(Math.random() * 5) + 1 : 0;
+
+  return (
+    <div key={i} className="aspect-square rounded-2xl bg-white/5 border border-white/10 p-3 flex flex-col justify-between group hover:border-purple-500/50 transition-all cursor-pointer relative overflow-hidden shadow-inner">
+      {/* Day Number - Brighter on hover */}
+      <span className="text-[11px] font-black text-white/40 group-hover:text-white transition-colors">
+        {day}
+      </span>
+      
+      {hasTrades && (
+        <div className="space-y-1.5 relative z-10">
+          {/* P&L Badge */}
+          <div className={`px-2 py-1 rounded-lg flex items-center justify-center ${dailyPnL >= 0 ? 'bg-emerald-500/20' : 'bg-rose-500/20'}`}>
+             <p className={`text-[10px] font-black tracking-tighter ${dailyPnL >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+               {dailyPnL >= 0 ? `+$${dailyPnL}` : `-$${Math.abs(dailyPnL)}`}
+             </p>
+          </div>
+
+          {/* Trade Count Badge */}
+          <div className="flex items-center gap-1.5 bg-white/5 rounded-md px-1.5 py-0.5 w-fit">
+             <div className={`w-1.5 h-1.5 rounded-full animate-pulse ${dailyPnL >= 0 ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+             <span className="text-[8px] font-black text-white uppercase tracking-tighter">
+               {tradeCount} Trades
+             </span>
+          </div>
+        </div>
+      )}
+
+      {/* Hover Glow Refined */}
+      <div className={`absolute inset-0 opacity-0 group-hover:opacity-20 transition-opacity pointer-events-none ${dailyPnL >= 0 ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+    </div>
+  );
+})}
+                      </div>
                     </div>
+
+                    {/* NEURAL INSIGHTS */}
                     <div className="bg-white/5 border border-white/5 rounded-[32px] p-8">
-                       <h3 className="text-xs font-black uppercase tracking-[0.3em] mb-6">Neural Insights</h3>
-                       <div className="space-y-4">
-                         <div className="p-4 rounded-2xl bg-purple-500/10 border border-purple-500/20">
-                            <p className="text-[10px] leading-relaxed text-purple-200">System detects high win-rate during London Open. Consider scaling size by 1.2x.</p>
-                         </div>
-                         <div className="p-4 rounded-2xl bg-white/5 border border-white/5">
-                            <p className="text-[10px] leading-relaxed text-white/40">Risk of overtrading detected in mid-session. Maintain discipline.</p>
-                         </div>
-                       </div>
+                      <h3 className="text-xs font-black uppercase tracking-[0.3em] mb-6">Neural Insights</h3>
+                      <div className="space-y-4">
+                        <div className="p-4 rounded-2xl bg-purple-500/10 border border-purple-500/20">
+                           <p className="text-[10px] leading-relaxed text-purple-200">System detects high win-rate during London Open. Consider scaling size by 1.2x.</p>
+                        </div>
+                        <div className="p-4 rounded-2xl bg-white/5 border border-white/5">
+                           <p className="text-[10px] leading-relaxed text-white/40">Risk of overtrading detected in mid-session. Maintain discipline.</p>
+                        </div>
+                      </div>
                     </div>
-                  </div>
+                  </div> {/* Closes the Grid containing Calendar + Insights */}
                 </>
               )}
+
+
               {activeTab === 'SYLLEDGE' && (
                 <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
                   <div className="flex items-center justify-between">
