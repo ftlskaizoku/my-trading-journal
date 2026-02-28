@@ -128,6 +128,26 @@ const [filters, setFilters] = useState({
             {/* Future monetization/sponsor block goes here */}
             </div>
         </aside>
+        {/* MOBILE BOTTOM NAVIGATION */}
+<nav className="flex md:hidden fixed bottom-0 left-0 w-full bg-black/80 backdrop-blur-2xl border-t border-white/10 z-[100] px-6 py-4 justify-around items-center">
+  {[
+    { id: 'DASHBOARD', icon: <LayoutDashboard size={20}/> },
+    { id: 'SYLLEDGE', icon: <Terminal size={20}/> },
+    { id: 'BACKTEST', icon: <Cpu size={20}/> },
+    { id: 'PLAYBOOK', icon: <Brain size={20}/> },
+    { id: 'SETTINGS', icon: <Settings size={20}/> },
+  ].map((item) => (
+    <button
+      key={item.id}
+      onClick={() => setActiveTab(item.id)}
+      className={`p-3 rounded-2xl transition-all ${
+        activeTab === item.id ? 'bg-purple-500/20 text-purple-500' : 'text-white/40'
+      }`}
+    >
+      {item.icon}
+    </button>
+  ))}
+</nav>
 
         {/* MAIN CONTENT AREA */}
         <main className="flex-1 flex flex-col min-w-0 overflow-hidden relative">
