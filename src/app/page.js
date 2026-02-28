@@ -34,10 +34,33 @@ const TradingTerminal = () => {
     background: '#020408',
     glowIntensity: 0.15
   });
+  const [liveAccountData, setLiveAccountData] = useState(null);
+const [isSyncing, setIsSyncing] = useState(false);
   const [chartData, setChartData] = useState([
     { name: 'Mon', val: 4000 }, { name: 'Tue', val: 3000 }, { name: 'Wed', val: 5500 },
     { name: 'Thu', val: 4800 }, { name: 'Fri', val: 7000 }, { name: 'Sat', val: 6800 }, { name: 'Sun', val: 9000 }
   ]);
+  const radarData = useMemo(() => {
+    if (!chartData || chartData.length < 2) {
+      return [
+        { subject: 'Risk', A: 120, fullMark: 150 }, { subject: 'Timing', A: 98, fullMark: 150 },
+        { subject: 'Edge', A: 86, fullMark: 150 }, { subject: 'Mindset', A: 99, fullMark: 150 },
+        { subject: 'Speed', A: 85, fullMark: 150 }
+      ];
+    }
+
+    // Simple Logic: Higher Profit/Loss consistency increases the "Edge" score
+    const totalProfit = chartData.reduce((sum, item) => sum + item.val, 0);
+    const winRate = (chartData.filter(item => item.val > 0).length / chartData.length) * 150;
+    
+    return [
+      { subject: 'Risk', A: 110, fullMark: 150 },
+      { subject: 'Timing', A: 95, fullMark: 150 },
+      { subject: 'Edge', A: Math.min(winRate, 150), fullMark: 150 },
+      { subject: 'Mindset', A: 105, fullMark: 150 },
+      { subject: 'Speed', A: 90, fullMark: 150 }
+    ];
+  }, [chartData]);
   const [entryImage, setEntryImage] = useState(null);
 const [chartUrl, setChartUrl] = useState('');
 const [filters, setFilters] = useState({
@@ -45,6 +68,51 @@ const [filters, setFilters] = useState({
   strategy: 'ALL',
   direction: 'ALL'
 });
+
+const syncLiveMT5 = async () => {
+  setIsSyncing(true);
+  try {
+    // Replace these with your actual keys from MetaApi
+    const API_TOKEN = 'eyJhbGciOiJSUzUxMiIsInR5cCI6IkpXVCJ9.eyJfaWQiOiJhOWM2NDIyMTU2YTA0MTUzZTY1MDgyMTgzODMwNjE5ZSIsImFjY2Vzc1J1bGVzIjpbeyJpZCI6InRyYWRpbmctYWNjb3VudC1tYW5hZ2VtZW50LWFwaSIsIm1ldGhvZHMiOlsidHJhZGluZy1hY2NvdW50LW1hbmFnZW1lbnQtYXBpOnJlc3Q6cHVibGljOio6KiJdLCJyb2xlcyI6WyJyZWFkZXIiLCJ3cml0ZXIiXSwicmVzb3VyY2VzIjpbIio6JFVTRVJfSUQkOioiXX0seyJpZCI6Im1ldGFhcGktcmVzdC1hcGkiLCJtZXRob2RzIjpbIm1ldGFhcGktYXBpOnJlc3Q6cHVibGljOio6KiJdLCJyb2xlcyI6WyJyZWFkZXIiLCJ3cml0ZXIiXSwicmVzb3VyY2VzIjpbIio6JFVTRVJfSUQkOioiXX0seyJpZCI6Im1ldGFhcGktcnBjLWFwaSIsIm1ldGhvZHMiOlsibWV0YWFwaS1hcGk6d3M6cHVibGljOio6KiJdLCJyb2xlcyI6WyJyZWFkZXIiLCJ3cml0ZXIiXSwicmVzb3VyY2VzIjpbIio6JFVTRVJfSUQkOioiXX0seyJpZCI6Im1ldGFhcGktcmVhbC10aW1lLXN0cmVhbWluZy1hcGkiLCJtZXRob2RzIjpbIm1ldGFhcGktYXBpOndzOnB1YmxpYzoqOioiXSwicm9sZXMiOlsicmVhZGVyIiwid3JpdGVyIl0sInJlc291cmNlcyI6WyIqOiRVU0VSX0lEJDoqIl19LHsiaWQiOiJtZXRhc3RhdHMtYXBpIiwibWV0aG9kcyI6WyJtZXRhc3RhdHMtYXBpOnJlc3Q6cHVibGljOio6KiJdLCJyb2xlcyI6WyJyZWFkZXIiLCJ3cml0ZXIiXSwicmVzb3VyY2VzIjpbIio6JFVTRVJfSUQkOioiXX0seyJpZCI6InJpc2stbWFuYWdlbWVudC1hcGkiLCJtZXRob2RzIjpbInJpc2stbWFuYWdlbWVudC1hcGk6cmVzdDpwdWJsaWM6KjoqIl0sInJvbGVzIjpbInJlYWRlciIsIndyaXRlciJdLCJyZXNvdXJjZXMiOlsiKjokVVNFUl9JRCQ6KiJdfSx7ImlkIjoiY29weWZhY3RvcnktYXBpIiwibWV0aG9kcyI6WyJjb3B5ZmFjdG9yeS1hcGk6cmVzdDpwdWJsaWM6KjoqIl0sInJvbGVzIjpbInJlYWRlciIsIndyaXRlciJdLCJyZXNvdXJjZXMiOlsiKjokVVNFUl9JRCQ6KiJdfSx7ImlkIjoibXQtbWFuYWdlci1hcGkiLCJtZXRob2RzIjpbIm10LW1hbmFnZXItYXBpOnJlc3Q6ZGVhbGluZzoqOioiLCJtdC1tYW5hZ2VyLWFwaTpyZXN0OnB1YmxpYzoqOioiXSwicm9sZXMiOlsicmVhZGVyIiwid3JpdGVyIl0sInJlc291cmNlcyI6WyIqOiRVU0VSX0lEJDoqIl19LHsiaWQiOiJiaWxsaW5nLWFwaSIsIm1ldGhvZHMiOlsiYmlsbGluZy1hcGk6cmVzdDpwdWJsaWM6KjoqIl0sInJvbGVzIjpbInJlYWRlciJdLCJyZXNvdXJjZXMiOlsiKjokVVNFUl9JRCQ6KiJdfV0sImlnbm9yZVJhdGVMaW1pdHMiOmZhbHNlLCJ0b2tlbklkIjoiMjAyMTAyMTMiLCJpbXBlcnNvbmF0ZWQiOmZhbHNlLCJyZWFsVXNlcklkIjoiYTljNjQyMjE1NmEwNDE1M2U2NTA4MjE4MzgzMDYxOWUiLCJpYXQiOjE3NzIyODM5OTR9.kytOcIVkTj6iQThm97_UGIuR4iJ3jB-3lPqj-Ch-XqWKo61ZkhCsbLB2vY4LUzRww7xTDHzpOf5YFHK0My2YecVChYAfLUz6frmhXrd72wzsC1mdKsMrthPpLnzB2Gwn3ryCip3TS3MgJgZtWBgbA-gaYCAmKMzr7KIHDh3UYkXRHnZ4cp-v9rmnlYkT_Teqz-Onl9zWL5mtHzGMmtfdnK9MOmskhrErCWH4PdLzZCFgF3Rj5Cx8M08G9hvNioQGOu_nv8nGQnBk6ID18b7ULQGnr-yFqOqwneoJb1Heb-rCrfslgWwXS3wxDjNlqGD1Da-onZCL6mfkAX4tqj8wfzKrhjMnUGzDnCmnGUAsOHHgwlvY_WAIWUsDu9wZan-HvCi5_qj49Fhy92KGViuKCqsTaTrpCJ05LWnmZhB_mr5yvVHYBP3v1m5jyNTPBICNcI0bQZUmSDoqV3X9coK9qb5AnaWZPKKrgOgwJK3VjzNCHdALMtAQzzbmy6yaQkh5Swc8gan74nAOa_Tkjy_O7OQ_Gqi3j6a8BaD3y5tDhit-U7w79abWHFXgmt-fao9v5o07WUQpaL76NS2h-bblkD6F347yM-zXBMgo8ZtzTnb--Lwl3PDVqxgSOPyO2QNNeKDXNxYJo9M-5A49H8a5EUyjFzD0rlHb75BcTuvWmDk'; 
+    const ACCOUNT_ID = '351af058-646e-47c7-98bb-5b892ff07829';
+
+    // This fetches your filled trade history
+    const response = await fetch(
+      `https://mt-client-api-v1.new-york.agiliumtrade.ai/users/current/accounts/${ACCOUNT_ID}/history-orders/filled?from=2025-01-01T00:00:00.000Z&to=2026-12-31T23:59:59.999Z`, 
+      { 
+        headers: { 'auth-token': API_TOKEN },
+        method: 'GET'
+      }
+    );
+  
+    // NEW GUARD: Handle the "Not Deployed" 404 error gracefully
+    if (response.status === 404) {
+      alert("Neural Bridge Offline: Please ensure your account is 'DEPLOYED' in the MetaApi Dashboard.");
+      setIsSyncing(false);
+      return;
+    }
+
+    if (!response.ok) throw new Error('Neural Link Failed');
+    
+    const data = await response.json();
+    
+    
+    // Convert MT5 data into your Chart format
+    const liveTrades = data.map((trade) => ({
+      name: new Date(trade.doneTime).toLocaleDateString('en-US', { weekday: 'short' }),
+      val: trade.profit // Profit/Loss value
+    }));
+
+    if (liveTrades.length > 0) {
+      setChartData(liveTrades);
+    }
+    
+    setIsSyncing(false);
+  } catch (error) {
+    console.error("Sync Error:", error);
+    setIsSyncing(false);
+  }
+};
 
 const handleFileUpload = (e) => {
   const file = e.target.files[0];
@@ -280,17 +348,29 @@ const handleFileUpload = (e) => {
                   <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
   <div className="lg:col-span-2 bg-white/5 border border-white/5 rounded-[32px] p-4 md:p-8 h-[350px] md:h-[450px] relative overflow-hidden">
                       <div className="flex items-center justify-between mb-8">
-                        <div className="flex items-center gap-4">
-                          <div className="w-10 h-10 rounded-xl bg-purple-500/10 flex items-center justify-center text-purple-500">
-                            <TrendingUp size={20} />
-                          </div>
-                          <h3 className="text-xs font-black uppercase tracking-[0.3em]">Equity Growth Neural Projection</h3>
-                        </div>
-                        <div className="flex gap-2">
-                          {['1D', '1W', '1M', 'ALL'].map(tf => (
-                            <button key={tf} className="px-4 py-2 rounded-lg bg-white/5 text-[9px] font-black hover:bg-white/10 transition-all">{tf}</button>
-                          ))}
-                        </div>
+                      <div className="flex items-center gap-4">
+  <div className="w-10 h-10 rounded-xl bg-purple-500/10 flex items-center justify-center text-purple-500">
+    <TrendingUp size={20} />
+  </div>
+  <div>
+    <h3 className="text-xs font-black uppercase tracking-[0.3em]">Equity Growth Neural Projection</h3>
+    
+    {/* STATUS INDICATOR ADDED HERE */}
+    <div className="flex items-center gap-2 mt-1">
+      <div className={`w-1.5 h-1.5 rounded-full ${isSyncing ? 'bg-yellow-500 animate-pulse' : 'bg-green-500'}`} />
+      <span className="text-[9px] text-white/40 uppercase tracking-widest font-bold">
+        {isSyncing ? 'Syncing MT5...' : 'Live Bridge Active'}
+      </span>
+    </div>
+  </div>
+</div>
+
+<div className="flex gap-2">
+  {['1D', '1W', '1M', 'ALL'].map(tf => (
+    <button key={tf} className="px-4 py-2 rounded-lg bg-white/5 text-[9px] font-black hover:bg-white/10 transition-all">{tf}</button>
+  ))}
+</div>
+                        
                       </div>
                       <div className={`w-full h-[300px] md:h-full pb-16 ${isPrivacyMode ? 'blur-2xl' : ''}`}>
                       <ResponsiveContainer width="100%" height="100%">
@@ -312,11 +392,7 @@ const handleFileUpload = (e) => {
                     <div className="bg-white/5 border border-white/5 rounded-[32px] p-8 flex flex-col items-center justify-center relative">
                       <h3 className="text-xs font-black uppercase tracking-[0.3em] mb-8 text-center">Neural Skill Distribution</h3>
                       <ResponsiveContainer width="100%" height={280}>
-                        <RadarChart cx="50%" cy="50%" outerRadius="80%" data={[
-                          { subject: 'Risk', A: 120, fullMark: 150 }, { subject: 'Timing', A: 98, fullMark: 150 },
-                          { subject: 'Edge', A: 86, fullMark: 150 }, { subject: 'Mindset', A: 99, fullMark: 150 },
-                          { subject: 'Speed', A: 85, fullMark: 150 }
-                        ]}>
+                      <RadarChart cx="50%" cy="50%" outerRadius="80%" data={radarData}>
 
 <PolarGrid stroke="#ffffff10" />
                           <PolarAngleAxis dataKey="subject" tick={{fill: '#ffffff40', fontSize: 8}} />
@@ -486,9 +562,12 @@ const handleFileUpload = (e) => {
       </div>
 
       <div className="flex gap-4">
-        <button className="px-6 py-3 bg-purple-500 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-purple-600 transition-all shadow-lg shadow-purple-500/20 flex items-center gap-2">
-          <Database size={14} /> Sync MT5
-        </button>
+      <button 
+  onClick={syncLiveMT5} // Now triggers the live API fetch
+  className="px-6 py-3 bg-purple-500 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-purple-600 transition-all shadow-lg shadow-purple-500/20 flex items-center gap-2"
+>
+  <Database size={14} /> {isSyncing ? 'Linking...' : 'Sync MT5'}
+</button>
       </div>
     </div>
 
@@ -867,7 +946,9 @@ const handleFileUpload = (e) => {
              
 
               <div className="p-10 border-t border-white/5 flex gap-6 bg-white/[0.02]">
-                <button className="flex-1 py-5 bg-white text-black rounded-[20px] text-xs font-black uppercase tracking-[0.2em] shadow-xl hover:scale-[1.02] active:scale-95 transition-all">
+                <button 
+                onClick={() => setIsLogModalOpen(false)}
+                className="flex-1 py-5 bg-white text-black rounded-[20px] text-xs font-black uppercase tracking-[0.2em] shadow-xl hover:scale-[1.02] active:scale-95 transition-all">
                   Commit to Sylledge
                 </button>
               </div>
