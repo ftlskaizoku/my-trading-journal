@@ -42,10 +42,26 @@ const [strategyRules, setStrategyRules] = useState({
   maxTradesPerDay: 3,
   stopLossRequired: true
 });
+const [customPlaybook, setCustomPlaybook] = useState([]);
+const [newStrategy, setNewStrategy] = useState({ 
+  name: '', 
+  rules: '', 
+  timeframe: '1H',
+  gradingCriteria: {
+    aplus: '',
+    a: '',
+    bplus: '',
+    b: ''
+  },
+  sampleImage: null 
+});
+const [isCreatingStrategy, setIsCreatingStrategy] = useState(false);
   const [chartData, setChartData] = useState([
     { name: 'Mon', val: 4000 }, { name: 'Tue', val: 3000 }, { name: 'Wed', val: 5500 },
     { name: 'Thu', val: 4800 }, { name: 'Fri', val: 7000 }, { name: 'Sat', val: 6800 }, { name: 'Sun', val: 9000 }
   ]);
+  const [selectedGrade, setSelectedGrade] = useState('A');// Default to A
+  const [activeSettingsSubTab, setActiveSettingsSubTab] = useState('ACCOUNT');
   const radarData = useMemo(() => {
     if (!chartData || chartData.length < 2) {
       return [
@@ -67,13 +83,35 @@ const [strategyRules, setStrategyRules] = useState({
       { subject: 'Speed', A: 90, fullMark: 150 }
     ];
   }, [chartData]);
-  const [entryImage, setEntryImage] = useState(null);
+  const [strategyNarrative, setStrategyNarrative] = useState('');
+const [entryImage, setEntryImage] = useState(null);
+const [lastTradePnl, setLastTradePnl] = useState(0); // For manual PnL entry
 const [chartUrl, setChartUrl] = useState('');
 const [filters, setFilters] = useState({
   asset: 'ALL',
   strategy: 'ALL',
   direction: 'ALL'
 });
+
+const [appearance, setAppearance] = useState({
+  mode: 'dark',
+  primaryColor: '#a855f7', // Default Purple
+  glowIntensity: 0.5
+});
+
+// This effect updates the "brand color" across the whole app instantly
+useEffect(() => {
+  document.documentElement.style.setProperty('--brand-primary', appearance.primaryColor);
+  document.documentElement.style.setProperty('--brand-glow', `${appearance.primaryColor}66`); // 40% opacity for glow
+}, [appearance.primaryColor]);
+useEffect(() => {
+  // Load saved appearance on mount
+  const saved = localStorage.getItem('sylledge_appearance');
+  if (saved) {
+    setAppearance(JSON.parse(saved));
+  }
+  setHasMounted(true);
+}, []);
 
 const syncLiveMT5 = async () => {
   setIsSyncing(true);
@@ -119,6 +157,122 @@ const syncLiveMT5 = async () => {
     setIsSyncing(false);
   }
 };
+// Add these to your existing state definitions
+const [profile, setProfile] = useState({ name: 'Neural Trader', email: 'elite@sylledge.ai', bio: '' });
+const [security, setSecurity] = useState({ twoFactor: false, loginAlerts: true });
+const [preferences, setPreferences] = useState({ language: 'EN', timezone: 'UTC', currency: 'USD' });
+
+
+const handleSyncSettings = () => {
+  setIsSyncing(true);
+  
+  // Save to LocalStorage so it stays when you refresh
+  localStorage.setItem('sylledge_appearance', JSON.stringify(appearance));
+  
+  // Simulate a cloud sync delay
+  setTimeout(() => {
+    setIsSyncing(false);
+  }, 1500);
+};
+
+// --- HELPER: Upload to Supabase Storage ---
+const uploadToSupabase = async (file) => {
+  const fileExt = file.name.split('.').pop();
+  const fileName = `${Math.random()}.${fileExt}`;
+  const filePath = `setups/${fileName}`;
+
+  let { error: uploadError } = await supabase.storage
+    .from('trading-images') // Ensure this bucket exists in your Supabase Dashboard
+    .upload(filePath, file);
+
+  if (uploadError) throw uploadError;
+
+  const { data } = supabase.storage.from('trading-images').getPublicUrl(filePath);
+  return data.publicUrl;
+};
+const handleSaveStrategy = async () => {
+  const { data, error } = await supabase
+    .from('playbook')
+    .insert([{ 
+      name: newStrategy.name, 
+      rules: newStrategy.rules, 
+      timeframe: newStrategy.timeframe 
+    }]);
+
+  if (!error) {
+    setCustomPlaybook([...customPlaybook, newStrategy]);
+    setIsCreatingStrategy(false);
+    setNewStrategy({ name: '', rules: '', timeframe: '1H' });
+  }
+};
+const handleCommitTrade = async () => {
+  try {
+    let imageUrl = null;
+
+    const handleSyncSettings = () => {
+      setIsSyncing(true);
+      
+      // Save to LocalStorage for persistence
+      localStorage.setItem('sylledge_appearance', JSON.stringify(appearance));
+      
+      // Simulate cloud sync delay
+      setTimeout(() => {
+        setIsSyncing(false);
+        alert("Neural Configuration Synced Successfully.");
+      }, 1000);
+    };
+
+    // 1. Upload image to Supabase Storage if it exists
+    if (entryImage) {
+      const fileExt = entryImage.name.split('.').pop();
+      const fileName = `${Math.random()}.${fileExt}`;
+      const filePath = `setups/${fileName}`;
+
+      
+
+      const { error: uploadError } = await supabase.storage
+        .from('trading-images')
+        .upload(filePath, entryImage);
+
+      if (uploadError) throw uploadError;
+
+      const { data } = supabase.storage.from('trading-images').getPublicUrl(filePath);
+      imageUrl = data.publicUrl;
+    }
+
+    // 2. Insert the full record into the Supabase Database
+    const { error } = await supabase.from('trades').insert([{
+      asset: filters.asset,
+      strategy_name: filters.strategy,
+      narrative: strategyNarrative,
+      image_url: imageUrl,
+      pnl: lastTradePnl,
+      timestamp: new Date()
+    }]);
+
+    if (error) throw error;
+
+    // 3. Success: Close modal and reset
+    setIsLogModalOpen(false);
+    setStrategyNarrative('');
+    setEntryImage(null);
+    alert("Neural Link Established: Strategy Stored.");
+
+  } catch (err) {
+    console.error("Storage Error:", err.message);
+    alert("Failed to store strategy: " + err.message);
+  }
+  const tradeData = {
+    asset: filters.asset,
+    strategy_name: filters.strategy,
+    setup_grade: selectedGrade, // Add this line
+    narrative: strategyNarrative,
+    image_url: imageUrl,
+    pnl: lastTradePnl,
+    timestamp: new Date()
+  };
+};
+
 
 const handleFileUpload = (e) => {
   const file = e.target.files[0];
@@ -198,8 +352,16 @@ const stats = useMemo(() => {
           margin: 0;
           padding: 0;
         }
+        :root {
+          --brand-primary: ${appearance.primaryColor};
+          --brand-glow: ${appearance.primaryColor}66; /* Added this line */
+        }
+        .text-brand { color: var(--brand-primary); }
+        .bg-brand { background-color: var(--brand-primary); }
+        .border-brand { border-color: var(--brand-primary); }
+        ..shadow-brand { box-shadow: 0 0 20px var(--brand-glow); }
       `}</style>
-    <div className="min-h-screen w-full bg-[#020408] text-white font-sans selection:bg-purple-500/30 overflow-x-hidden relative">
+    <div className="min-h-screen w-full bg-[#020408] text-white font-sans selection:bg-brand/30 overflow-x-hidden relative">
     {/* Neural Background Engine */}
     <div 
       className="fixed inset-0 pointer-events-none opacity-20 transition-opacity duration-1000"
@@ -222,7 +384,7 @@ const stats = useMemo(() => {
 >
           <div className="flex flex-col h-full py-10 px-6">
             <div className="flex items-center gap-4 mb-16 overflow-hidden">
-            <div className="min-w-[48px] h-12 rounded-2xl bg-purple-500 flex items-center justify-center shadow-[0_0_30px_rgba(168,85,247,0.4)]">
+            <div className="min-w-[48px] h-12 rounded-2xl bg-purple-500 flex items-center justify-center shadow-brand">
                 <Zap size={24} className="text-white fill-white" />
               </div>
               <div className={`transition-opacity duration-300 ${isSidebarExpanded ? 'opacity-100' : 'opacity-0'}`}>
@@ -243,7 +405,7 @@ const stats = useMemo(() => {
                   key={item.id}
                   onClick={() => setActiveTab(item.id)}
                   className={`w-full flex items-center gap-6 p-4 rounded-2xl transition-all relative group ${
-                    activeTab === item.id ? 'bg-white/5 text-purple-500' : 'text-white/40 hover:text-white'
+                    activeTab === item.id ? 'bg-brand/10 text-brand border-l-2 border-brand' : 'text-white/40 hover:text-white'
                   }`}
                 >
                   <div className="min-w-[20px]">{item.icon}</div>
@@ -273,7 +435,7 @@ const stats = useMemo(() => {
       key={item.id}
       onClick={() => setActiveTab(item.id)}
       className={`p-3 rounded-2xl transition-all ${
-        activeTab === item.id ? 'bg-purple-500/20 text-purple-500' : 'text-white/40'
+        activeTab === item.id ? 'bg-purple-500/20 text-brand' : 'text-white/40'
       }`}
     >
       {item.icon}
@@ -710,9 +872,11 @@ const stats = useMemo(() => {
       Strategy Narrative
     </label>
     <textarea 
-      placeholder="Explain your setup logic (e.g., 'ICT Silver Bullet at FVG')..."
-      className="w-full h-32 bg-white/5 border border-white/10 rounded-[24px] p-6 text-xs font-medium focus:outline-none focus:border-purple-500 transition-all resize-none placeholder:text-white/10"
-    />
+  value={strategyNarrative}
+  onChange={(e) => setStrategyNarrative(e.target.value)}
+  placeholder="Explain your setup logic..."
+  className="..." 
+/>
   </div>
 
   <div>
@@ -744,117 +908,224 @@ const stats = useMemo(() => {
                 </div>
               )}
 
-              {activeTab === 'PLAYBOOK' && (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
-                  {[
-                    { title: 'The Silver Bullet', grade: 'S-Tier', rules: 5, edge: '92%', color: 'border-purple-500/50' },
-                    { title: 'Liquidity Grab', grade: 'A+', rules: 4, edge: '84%', color: 'border-blue-500/50' },
-                    { title: 'Catalyst Break', grade: 'B', rules: 6, edge: '71%', color: 'border-white/10' },
-                  ].map((play, i) => (
-                    <div key={i} className={`bg-white/5 border ${play.color} rounded-[32px] p-8 group hover:scale-[1.02] transition-all cursor-pointer relative overflow-hidden`}>
-                      <div className="flex justify-between items-start mb-12">
-                        <div className="w-12 h-12 rounded-2xl bg-white/5 flex items-center justify-center">
-                          <Brain size={24} className="text-white/40 group-hover:text-white transition-colors" />
-                        </div>
-                        <span className="text-[10px] font-black px-3 py-1 bg-white text-black rounded-lg uppercase tracking-tighter">{play.grade}</span>
-                      </div>
-                      <h4 className="text-xl font-black italic tracking-tighter mb-2">{play.title}</h4>
-                      <p className="text-[10px] font-bold text-white/30 uppercase tracking-[0.2em] mb-8">Systematic Edge: {play.edge}</p>
-                      
-                      <div className="space-y-3">
-                        {[...Array(3)].map((_, j) => (
-                          <div key={j} className="flex items-center gap-3">
-                            <CheckCircle2 size={12} className="text-emerald-500" />
-                            <span className="text-[10px] font-bold text-white/60">Rule Validation 0{j+1} Passed</span>
-                          </div>
-                        ))}
-                      </div>
-                      <div className="mt-8 pt-8 border-t border-white/5 flex justify-between items-center">
-                        <span className="text-[8px] font-black text-white/20 uppercase tracking-widest">{play.rules} Rules Active</span>
-                        <ChevronRight size={16} className="text-white/20" />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
+{activeTab === 'PLAYBOOK' && (
+  <div className="p-10 space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-1000">
+    <div className="flex justify-between items-center">
+      <h2 className="text-4xl font-black italic tracking-tighter">NEURAL PLAYBOOK</h2>
+      <button 
+        onClick={() => setIsCreatingStrategy(true)}
+        className="px-6 py-3 bg-white text-black text-[10px] font-black uppercase tracking-widest rounded-full hover:scale-105 transition-all"
+      >
+        + Create New Strategy
+      </button>
+    </div>
 
-              {activeTab === 'SETTINGS' && (
-                <div className="max-w-4xl space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    <div className="space-y-8">
-                      <div className="bg-white/5 border border-white/5 rounded-[32px] p-8">
-                        <h3 className="text-xs font-black uppercase tracking-[0.3em] mb-8">Identity Profile</h3>
-                        <div className="flex items-center gap-6 mb-8">
-                          <div className="w-20 h-20 rounded-[24px] bg-gradient-to-br from-purple-500 to-blue-500 p-[2px]">
-                            <div className="w-full h-full rounded-[22px] bg-black flex items-center justify-center">
-                               <User size={32} />
-                            </div>
-                          </div>
-                          <div>
-                            <p className="text-sm font-black italic tracking-tight">Neural_User_771</p>
-                            <p className="text-[10px] font-bold text-purple-500 uppercase tracking-widest">Elite Tier Active</p>
-                          </div>
-                        </div>
-                        <div className="space-y-4">
-                          <button className="w-full p-4 bg-white/5 border border-white/10 rounded-xl text-[10px] font-black uppercase tracking-widest text-left flex justify-between">
-                            Edit Alias <ChevronRight size={14} />
-                          </button>
-                          <button className="w-full p-4 bg-white/5 border border-white/10 rounded-xl text-[10px] font-black uppercase tracking-widest text-left flex justify-between">
-                            Privacy Settings <ChevronRight size={14} />
-                          </button>
-                        </div>
-                      </div>
+    {/* Strategy Creator Form */}
+    {isCreatingStrategy && (
+      <div className="p-8 bg-white/5 border border-white/10 rounded-[32px] space-y-6">
+        <input 
+          placeholder="Strategy Name (e.g. ICT Silver Bullet)"
+          className="w-full bg-transparent border-b border-white/10 py-4 text-xl font-bold outline-none focus:border-purple-500"
+          onChange={(e) => setNewStrategy({...newStrategy, name: e.target.value})}
+        />
+        <div className="mb-6">
+  <label className="text-[10px] font-black uppercase tracking-widest text-purple-500 mb-4 block">Setup Quality Grade</label>
+  <div className="flex gap-2">
+    {['A+', 'A', 'B+', 'B'].map((grade) => (
+      <button 
+        key={grade}
+        onClick={() => setSelectedGrade(grade)}
+        className={`flex-1 py-3 rounded-xl text-[10px] font-black transition-all border ${
+          selectedGrade === grade 
+          ? 'bg-purple-500 border-purple-500 text-white shadow-[0_0_20px_rgba(168,85,247,0.4)]' 
+          : 'bg-white/5 border-white/10 text-white/40 hover:bg-white/10'
+        }`}
+      >
+        {grade}
+      </button>
+    ))}
+  </div>
+</div>
+        <button onClick={handleSaveStrategy} className="w-full py-4 bg-purple-500 rounded-xl font-black uppercase text-[10px] tracking-widest">
+          Sync to Neural Network
+        </button>
+      </div>
+    )}
 
-                      <div className="bg-white/5 border border-white/5 rounded-[32px] p-8">
-                        <div className="flex items-center gap-3 mb-8">
-                           <ShieldCheck size={18} className="text-emerald-500" />
-                           <h3 className="text-xs font-black uppercase tracking-[0.3em]">Security Matrix</h3>
-                        </div>
-                        <div className="space-y-6">
-                           <div className="flex items-center justify-between">
-                              <span className="text-[10px] font-bold text-white/40 uppercase">Two-Factor Auth</span>
-                              <div className="w-10 h-5 bg-purple-500 rounded-full relative"><div className="absolute right-1 top-1 w-3 h-3 bg-white rounded-full"/></div>
-                           </div>
-                           <div className="flex items-center justify-between">
-                              <span className="text-[10px] font-bold text-white/40 uppercase">API Encryption</span>
-                              <span className="text-[10px] font-black text-emerald-500">AES-256</span>
-                           </div>
-                        </div>
-                      </div>
-                    </div>
+    {/* Display Custom + Default Strategies */}
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      {[...customPlaybook, { name: 'Default Scalp', rules: 'Standard 1:2 RR', timeframe: '5M' }].map((strat, i) => (
+        <div key={i} className="p-8 bg-white/5 border border-white/5 rounded-[32px] hover:bg-white/[0.07] transition-all group">
+          <div className="flex justify-between items-start mb-6">
+            <h3 className="text-2xl font-black italic">{strat.name}</h3>
+            <span className="px-3 py-1 bg-purple-500/20 text-purple-400 text-[8px] font-black rounded-full">{strat.timeframe}</span>
+          </div>
+          <p className="text-sm text-white/40 leading-relaxed">{strat.rules}</p>
+        </div>
+      ))}
+    </div>
+  </div>
+)}
 
-                    <div className="bg-white/5 border border-white/5 rounded-[32px] p-8">
-                      <div className="flex items-center gap-3 mb-8">
-                         <Palette size={18} className="text-purple-500" />
-                         <h3 className="text-xs font-black uppercase tracking-[0.3em]">Neural Aesthetic</h3>
-                      </div>
-                      <div className="grid grid-cols-4 gap-4 mb-8">
-                        {['#a855f7', '#3b82f6', '#10b981', '#f43f5e'].map(color => (
-                          <button 
-                            key={color}
-                            onClick={() => setTheme({...theme, primary: color})}
-                            className="aspect-square rounded-xl border-2 border-white/5 transition-all hover:scale-105"
-                            style={{ backgroundColor: color, borderColor: theme.primary === color ? 'white' : 'transparent' }}
-                          />
-                        ))}
-                      </div>
-                      <div className="space-y-4">
-                        <div className="flex justify-between items-center">
-                          <span className="text-[10px] font-bold text-white/40 uppercase">Glow Intensity</span>
-                          <span className="text-[10px] font-black text-white">{(theme.glowIntensity * 100).toFixed(0)}%</span>
-                        </div>
-                        <input 
-                          type="range" 
-                          min="0" max="0.5" step="0.01" 
-                          value={theme.glowIntensity}
-                          onChange={(e) => setTheme({...theme, glowIntensity: parseFloat(e.target.value)})}
-                          className="w-full accent-purple-500" 
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
+{activeTab === 'SETTINGS' && (
+  <div className="flex h-full animate-in fade-in duration-700">
+    {/* INTERNAL SETTINGS SIDEBAR */}
+    <div className="w-64 border-r border-white/5 p-6 space-y-2">
+      <h2 className="text-xs font-black text-purple-500 uppercase tracking-[0.3em] mb-8 px-4">System Config</h2>
+      {[
+        { id: 'ACCOUNT', icon: User, label: 'Account Profile' },
+        { id: 'SECURITY', icon: ShieldCheck, label: 'Security & 2FA' },
+        { id: 'APPEARANCE', icon: Palette, label: 'Appearance' },
+        { id: 'PREFERENCES', icon: Languages, label: 'Preferences' },
+      ].map((item) => (
+        <button
+          key={item.id}
+          onClick={() => setActiveSettingsSubTab(item.id)}
+          className={`w-full flex items-center gap-4 px-4 py-4 rounded-2xl transition-all group ${
+            activeSettingsSubTab === item.id 
+            ? 'bg-purple-500/10 text-purple-500 border border-purple-500/20' 
+            : 'text-white/40 hover:bg-white/5 hover:text-white'
+          }`}
+        >
+          <item.icon size={18} className={activeSettingsSubTab === item.id ? 'animate-pulse' : ''} />
+          <span className="text-[10px] font-black uppercase tracking-widest">{item.label}</span>
+        </button>
+      ))}
+    </div>
+
+    {/* SETTINGS CONTENT AREA */}
+    <div className="flex-1 p-12 overflow-y-auto custom-scroll">
+      <div className="max-w-3xl space-y-10">
+        
+        {/* RENDER CONTENT BASED ON SUB-TAB */}
+        {activeSettingsSubTab === 'ACCOUNT' && (
+          <div className="space-y-8 animate-in slide-in-from-right-4 duration-500">
+            <h3 className="text-3xl font-black italic tracking-tighter uppercase">Account Profile</h3>
+            <div className="grid grid-cols-1 gap-6">
+               <div className="space-y-2">
+                 <label className="text-[9px] font-black text-white/30 uppercase tracking-widest px-1">Display Name</label>
+                 <input type="text" defaultValue="Neural Trader" className="w-full bg-white/5 border border-white/10 rounded-2xl p-5 text-sm font-bold outline-none focus:border-purple-500 transition-all" />
+               </div>
+               <div className="space-y-2">
+                 <label className="text-[9px] font-black text-white/30 uppercase tracking-widest px-1">Email Address</label>
+                 <input type="email" defaultValue="elite@sylledge.ai" className="w-full bg-white/5 border border-white/10 rounded-2xl p-5 text-sm font-bold outline-none focus:border-purple-500 transition-all" />
+               </div>
+            </div>
+          </div>
+        )}
+
+        {activeSettingsSubTab === 'SECURITY' && (
+          <div className="space-y-8 animate-in slide-in-from-right-4 duration-500">
+            <h3 className="text-3xl font-black italic tracking-tighter uppercase">Security Engine</h3>
+            <div className="p-8 bg-white/5 border border-white/10 rounded-[32px] flex items-center justify-between">
+              <div>
+                <p className="text-sm font-black uppercase">Two-Factor Authentication</p>
+                <p className="text-[10px] text-white/30">Add an extra layer of protection to your neural link.</p>
+              </div>
+              <div className="w-14 h-7 bg-white/10 rounded-full relative cursor-pointer">
+                <div className="absolute left-1 top-1 w-5 h-5 bg-white/20 rounded-full" />
+              </div>
+            </div>
+          </div>
+        )}
+
+{activeSettingsSubTab === 'APPEARANCE' && (
+  <div className="space-y-10 animate-in slide-in-from-right-4 duration-500">
+    <header>
+      <h3 className="text-3xl font-black italic tracking-tighter uppercase">Appearance Engine</h3>
+      <p className="text-[10px] text-white/30 uppercase tracking-[0.2em]">Visual Interface Customization</p>
+    </header>
+
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
+      {/* Theme Selection */}
+      <div className="space-y-4">
+        <label className="text-[9px] font-black uppercase text-white/30 tracking-widest">Interface Mode</label>
+        <div className="grid grid-cols-3 gap-3">
+          {['DARK', 'LIGHT', 'CYBER'].map(mode => (
+            <button 
+              key={mode}
+              onClick={() => setAppearance({...appearance, mode: mode.toLowerCase()})}
+              className={`py-4 rounded-2xl text-[10px] font-black border transition-all ${
+                appearance.mode === mode.toLowerCase() 
+                ? 'border-brand bg-brand/10 text-brand' 
+                : 'border-white/5 bg-white/5 text-white/40 hover:bg-white/10'
+              }`}
+            >
+              {mode}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Primary Color Panel */}
+      <div className="space-y-4">
+        <label className="text-[9px] font-black uppercase text-white/30 tracking-widest">Neural Brand Color</label>
+        <div className="flex flex-wrap gap-3">
+          {['#a855f7', '#3b82f6', '#10b981', '#f59e0b', '#ef4444'].map(color => (
+            <button 
+              key={color}
+              onClick={() => setAppearance({...appearance, primaryColor: color})}
+              className="w-10 h-10 rounded-full border-2 border-white/10 transition-transform hover:scale-110 active:scale-90"
+              style={{ backgroundColor: color, borderColor: appearance.primaryColor === color ? 'white' : 'transparent' }}
+            />
+          ))}
+          {/* Custom Color Picker */}
+          <div className="relative w-10 h-10 rounded-full overflow-hidden border-2 border-white/10 group">
+             <Plus size={14} className="absolute inset-0 m-auto pointer-events-none group-hover:rotate-90 transition-transform" />
+             <input 
+              type="color" 
+              value={appearance.primaryColor}
+              onChange={(e) => setAppearance({...appearance, primaryColor: e.target.value})}
+              className="absolute inset-0 w-full h-full scale-150 cursor-pointer opacity-0" 
+             />
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {/* Live Preview Card */}
+    <div className="p-8 rounded-[32px] bg-white/5 border border-white/10 relative overflow-hidden group">
+      <div className="absolute top-0 right-0 w-32 h-32 bg-brand/20 blur-[50px] rounded-full -mr-16 -mt-16" />
+      <h4 className="text-xs font-black uppercase tracking-widest mb-4">Neural Preview</h4>
+      <div className="flex gap-4">
+        <div className="w-12 h-12 rounded-2xl bg-brand flex items-center justify-center shadow-lg shadow-brand/40">
+          <Zap size={20} className="text-black" />
+        </div>
+        <div>
+          <p className="text-sm font-bold">Sylledge Interface v3.0</p>
+          <p className="text-[10px] text-brand font-black uppercase tracking-widest">Active Neural Link</p>
+        </div>
+      </div>
+    </div>
+  </div>
+)}
+
+        {activeSettingsSubTab === 'PREFERENCES' && (
+          <div className="space-y-8 animate-in slide-in-from-right-4 duration-500">
+            <h3 className="text-3xl font-black italic tracking-tighter uppercase">Preferences</h3>
+            <div className="space-y-4">
+               <select className="w-full bg-white/5 border border-white/10 rounded-2xl p-5 text-sm font-bold outline-none appearance-none">
+                 <option>Language: English (US)</option>
+                 <option>Language: Français</option>
+               </select>
+            </div>
+          </div>
+        )}
+
+        {/* PERSISTENT SAVE BUTTON */}
+<div className="pt-10">
+  <button 
+    onClick={handleSyncSettings}
+    disabled={isSyncing}
+    className={`px-10 py-5 bg-white text-black text-[10px] font-black uppercase tracking-[0.3em] rounded-2xl hover:scale-105 active:scale-95 transition-all shadow-xl ${isSyncing ? 'opacity-50 cursor-not-allowed' : ''}`}
+  >
+    {isSyncing ? 'Syncing to Cloud...' : 'Sync Changes to Cloud'}
+  </button>
+</div>
+      </div>
+    </div>
+  </div>
+)}
             </div>
         
 
@@ -878,49 +1149,60 @@ const stats = useMemo(() => {
                   
                   {/* LEFT COLUMN: PRIMARY METRICS */}
                   <div className="space-y-8">
-                    <div className="grid grid-cols-2 gap-6">
-                      <div className="space-y-3">
-                        <label className="text-[9px] font-black uppercase text-white/30 tracking-widest">Trade Date</label>
-                        <input type="date" className="w-full bg-white/5 border border-white/10 rounded-2xl p-5 text-sm font-bold text-white outline-none focus:border-purple-500 transition-all [color-scheme:dark]" />
-                      </div>
-                      <div className="space-y-3">
-                        <label className="text-[9px] font-black uppercase text-white/30 tracking-widest">Strategy / Playbook</label>
-                        <input type="text" placeholder="e.g. Silver Bullet" className="w-full bg-white/5 border border-white/10 rounded-2xl p-5 text-sm font-bold outline-none focus:border-purple-500 transition-all" />
-                      </div>
-                    </div>
+  <div className="grid grid-cols-2 gap-6">
+    <div className="space-y-3">
+      <label className="text-[9px] font-black uppercase text-white/30 tracking-widest">Trade Date</label>
+      <input type="date" className="w-full bg-white/5 border border-white/10 rounded-2xl p-5 text-sm font-bold text-white outline-none focus:border-purple-500 transition-all [color-scheme:dark]" />
+    </div>
+    <div className="space-y-3">
+      <label className="text-[9px] font-black uppercase text-white/30 tracking-widest">Strategy / Playbook</label>
+      <input type="text" placeholder="e.g. Silver Bullet" className="w-full bg-white/5 border border-white/10 rounded-2xl p-5 text-sm font-bold outline-none focus:border-purple-500 transition-all" />
+    </div>
+  </div>
 
-                    <div className="grid grid-cols-2 gap-6">
-                      <div className="space-y-3">
-                        <label className="text-[9px] font-black uppercase text-white/30 tracking-widest">Instrument</label>
-                        <input type="text" placeholder="e.g. XAUUSD" className="w-full bg-white/5 border border-white/10 rounded-2xl p-5 text-sm font-bold outline-none focus:border-purple-500 transition-all" />
-                      </div>
-                      <div className="space-y-3">
-                        <label className="text-[9px] font-black uppercase text-white/30 tracking-widest">Position Size</label>
-                        <input type="text" placeholder="0.00" className="w-full bg-white/5 border border-white/10 rounded-2xl p-5 text-sm font-bold outline-none focus:border-purple-500 transition-all" />
-                      </div>
-                    </div>
+  {/* --- NEW: SETUP GRADING SELECTOR --- */}
+  <div className="space-y-3">
+    <label className="text-[9px] font-black uppercase text-white/30 tracking-widest">Neural Setup Grade</label>
+    <div className="flex gap-2">
+      {['A+', 'A', 'B+', 'B'].map((grade) => (
+        <button 
+          key={grade}
+          onClick={() => setSelectedGrade(grade)}
+          className={`flex-1 py-4 rounded-xl text-[10px] font-black transition-all border ${
+            selectedGrade === grade 
+            ? 'bg-purple-500 border-purple-500 text-white shadow-[0_0_20px_rgba(168,85,247,0.3)]' 
+            : 'bg-white/5 border-white/10 text-white/40 hover:bg-white/10'
+          }`}
+        >
+          {grade}
+        </button>
+      ))}
+    </div>
+  </div>
 
-                    <div className="grid grid-cols-2 gap-6">
-                      <div className="space-y-3">
-                        <label className="text-[9px] font-black uppercase text-white/30 tracking-widest">Entry Price</label>
-                        <input type="number" step="any" placeholder="0.00000" className="w-full bg-white/5 border border-white/10 rounded-2xl p-5 text-sm font-bold outline-none focus:border-purple-500 transition-all" />
-                      </div>
-                      <div className="space-y-3">
-                        <label className="text-[9px] font-black uppercase text-white/30 tracking-widest">Exit Price</label>
-                        <input type="number" step="any" placeholder="0.00000" className="w-full bg-white/5 border border-white/10 rounded-2xl p-5 text-sm font-bold outline-none focus:border-purple-500 transition-all" />
-                      </div>
-                    </div>
+  <div className="grid grid-cols-2 gap-6">
+    <div className="space-y-3">
+      <label className="text-[9px] font-black uppercase text-white/30 tracking-widest">Instrument</label>
+      <input type="text" placeholder="e.g. XAUUSD" className="w-full bg-white/5 border border-white/10 rounded-2xl p-5 text-sm font-bold outline-none focus:border-purple-500 transition-all" />
+    </div>
+    <div className="space-y-3">
+      <label className="text-[9px] font-black uppercase text-white/30 tracking-widest">Position Size</label>
+      <input type="text" placeholder="0.00" className="w-full bg-white/5 border border-white/10 rounded-2xl p-5 text-sm font-bold outline-none focus:border-purple-500 transition-all" />
+    </div>
+  </div>
 
-                    <div className="space-y-3">
-                      <label className="text-[9px] font-black uppercase text-white/30 tracking-widest">Risk : Reward Ratio</label>
-                      <input type="text" placeholder="e.g. 1:3.5" className="w-full bg-white/5 border border-white/10 rounded-2xl p-5 text-sm font-bold outline-none focus:border-purple-500 transition-all" />
-                    </div>
-
-                    <div className="space-y-3">
-                      <label className="text-[9px] font-black uppercase text-white/30 tracking-widest">Entry Thesis</label>
-                      <textarea rows={3} placeholder="Describe the neural confluence..." className="w-full bg-white/5 border border-white/10 rounded-2xl p-5 text-sm font-bold outline-none focus:border-purple-500 transition-all resize-none" />
-                    </div>
-                  </div>
+  {/* --- UPDATED: CONNECTED NARRATIVE --- */}
+  <div className="space-y-3">
+    <label className="text-[9px] font-black uppercase text-white/30 tracking-widest">Strategy Narrative</label>
+    <textarea 
+      rows={4} 
+      value={strategyNarrative}
+      onChange={(e) => setStrategyNarrative(e.target.value)}
+      placeholder="Describe the neural confluence (Why is this an A+?)..." 
+      className="w-full bg-white/5 border border-white/10 rounded-2xl p-5 text-sm font-bold outline-none focus:border-purple-500 transition-all resize-none" 
+    />
+  </div>
+</div>
 
                   {/* RIGHT COLUMN: VISION & PSYCHOLOGY */}
                   <div className="space-y-8">
@@ -965,8 +1247,10 @@ const stats = useMemo(() => {
           className="hidden" 
           onChange={(e) => {
             const file = e.target.files[0];
-            if (file) setEntryImage(URL.createObjectURL(file));
-          }} 
+            if (file) {
+              setEntryImage(file); // Stores the actual file for Supabase
+            }
+          }}
         />
       </div>
 
@@ -1007,11 +1291,11 @@ const stats = useMemo(() => {
              
 
               <div className="p-10 border-t border-white/5 flex gap-6 bg-white/[0.02]">
-                <button 
-                onClick={() => setIsLogModalOpen(false)}
-                className="flex-1 py-5 bg-white text-black rounded-[20px] text-xs font-black uppercase tracking-[0.2em] shadow-xl hover:scale-[1.02] active:scale-95 transition-all">
-                  Commit to Sylledge
-                </button>
+              <button 
+  onClick={handleCommitTrade}
+  className="flex-1 py-5 bg-white text-black rounded-[20px] text-xs font-black uppercase tracking-[0.2em] shadow-xl hover:scale-[1.02] active:scale-95 transition-all">
+  Commit to Sylledge
+</button>
               </div>
             </div>
           </div>
