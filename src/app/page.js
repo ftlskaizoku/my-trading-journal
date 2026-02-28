@@ -82,12 +82,12 @@ const [filters, setFilters] = useState({
         
         {/* ADAPTIVE SIDEBAR (Sliver to Expanded) */}
         <aside 
-          onMouseEnter={() => setIsSidebarExpanded(true)}
-          onMouseLeave={() => setIsSidebarExpanded(false)}
-          className={`flex flex-col border-r border-white/5 bg-black/40 backdrop-blur-3xl transition-all duration-500 z-50 ${
-            isSidebarExpanded ? 'w-80' : 'w-24'
-          }`}
-        >
+  onMouseEnter={() => setIsSidebarExpanded(true)}
+  onMouseLeave={() => setIsSidebarExpanded(false)}
+  className={`hidden md:flex flex-col border-r border-white/5 bg-black/40 backdrop-blur-3xl transition-all duration-500 z-50 fixed left-0 h-full ${
+    isSidebarExpanded ? 'w-80' : 'w-24'
+  }`}
+>
           <div className="flex flex-col h-full py-10 px-6">
             <div className="flex items-center gap-4 mb-16 overflow-hidden">
             <div className="min-w-[48px] h-12 rounded-2xl bg-purple-500 flex items-center justify-center shadow-[0_0_30px_rgba(168,85,247,0.4)]">
@@ -149,8 +149,9 @@ const [filters, setFilters] = useState({
   ))}
 </nav>
 
-        {/* MAIN CONTENT AREA */}
-        <main className="flex-1 flex flex-col min-w-0 overflow-hidden relative">
+       {/* MAIN CONTENT AREA */}
+<main className="flex-1 min-h-screen transition-all duration-500 md:pl-24 lg:pl-24">
+  <div className="p-4 md:p-10 pb-32 md:pb-10 max-w-[1600px] mx-auto space-y-10">
           
           {/* TOP NAVIGATION / HEADER */}
           <header className="h-24 border-b border-white/5 flex items-center justify-between px-10 bg-black/20 backdrop-blur-md relative z-20">
@@ -826,6 +827,7 @@ const [filters, setFilters] = useState({
           <div className="absolute inset-0 rounded-full bg-white animate-ping opacity-20 pointer-events-none" />
         </button>
 
+        </div>
       </main> 
     </div> 
   </div> 
