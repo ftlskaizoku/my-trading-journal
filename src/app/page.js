@@ -14,7 +14,8 @@ import {
   LayoutDashboard, Globe, Lock, Clock, ArrowUpRight, BarChart4,
   LogOut, User, CreditCard, Languages, CheckCircle2, AlertTriangle, 
   Timer, ZapOff, Image as ImageIcon, ChevronRight, Moon, Sun, 
-  Wallet, Gauge, Database, MessageSquare, Briefcase, Menu, Search, Download
+  Wallet, Gauge, Database, MessageSquare, Briefcase, Menu, Search, 
+  Download, Upload // Added Upload here
 } from 'lucide-react';
 
 const TradingTerminal = () => {
@@ -33,6 +34,10 @@ const TradingTerminal = () => {
     background: '#020408',
     glowIntensity: 0.15
   });
+  const [chartData, setChartData] = useState([
+    { name: 'Mon', val: 4000 }, { name: 'Tue', val: 3000 }, { name: 'Wed', val: 5500 },
+    { name: 'Thu', val: 4800 }, { name: 'Fri', val: 7000 }, { name: 'Sat', val: 6800 }, { name: 'Sun', val: 9000 }
+  ]);
   const [entryImage, setEntryImage] = useState(null);
 const [chartUrl, setChartUrl] = useState('');
 const [filters, setFilters] = useState({
@@ -41,6 +46,30 @@ const [filters, setFilters] = useState({
   direction: 'ALL'
 });
 
+const handleFileUpload = (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = (event) => {
+    const text = event.target.result;
+    const rows = text.split('\n').slice(1); 
+    const parsedData = rows
+      .filter(row => row.trim() !== "") // Skip empty lines
+      .map((row, index) => {
+        const cols = row.split(',');
+        return { 
+          name: cols[0] || `Trade ${index + 1}`, 
+          val: parseFloat(cols[1]) || 0 
+        };
+      });
+
+    if (parsedData.length > 0) {
+      setChartData(parsedData); // This triggers the UI update
+    }
+  };
+  reader.readAsText(file);
+};
   const [sessionMetrics, setSessionMetrics] = useState({
     alpha: 94.2,
     pnl: 12450,
@@ -68,7 +97,16 @@ const [filters, setFilters] = useState({
   if (!hasMounted) return null;
 
   return (
-    
+    <>
+      <style jsx global>{`
+        html, body {
+          overflow-x: hidden;
+          position: relative;
+          max-width: 100%;
+          margin: 0;
+          padding: 0;
+        }
+      `}</style>
     <div className="min-h-screen w-full bg-[#020408] text-white font-sans selection:bg-purple-500/30 overflow-x-hidden relative">
     {/* Neural Background Engine */}
     <div 
@@ -210,8 +248,8 @@ const [filters, setFilters] = useState({
           </header>
 
           {/* DYNAMIC VIEWPORT */}
-        <div className="flex-1 overflow-y-auto scrollbar-hide p-10 custom-scroll">
-            <div className="max-w-[1600px] mx-auto space-y-10">
+          <div className="flex-1 p-4 md:p-10">
+            
               
               {activeTab === 'DASHBOARD' && (
                 <>
@@ -254,12 +292,9 @@ const [filters, setFilters] = useState({
                           ))}
                         </div>
                       </div>
-                      <div className={`w-full h-full pb-12 ${isPrivacyMode ? 'blur-2xl' : ''}`}>
+                      <div className={`w-full h-[300px] md:h-full pb-16 ${isPrivacyMode ? 'blur-2xl' : ''}`}>
                       <ResponsiveContainer width="100%" height="100%">
-                          <AreaChart data={[
-                            { name: 'Mon', val: 4000 }, { name: 'Tue', val: 3000 }, { name: 'Wed', val: 5500 },
-                            { name: 'Thu', val: 4800 }, { name: 'Fri', val: 7000 }, { name: 'Sat', val: 6800 }, { name: 'Sun', val: 9000 }
-                          ]}>
+                      <AreaChart data={chartData}>
                             <defs>
                               <linearGradient id="colorVal" x1="0" y1="0" x2="0" y2="1">
                                 <stop offset="5%" stopColor={theme.primary} stopOpacity={0.3}/>
@@ -681,7 +716,7 @@ const [filters, setFilters] = useState({
                 </div>
               )}
             </div>
-        </div>
+        
 
      {/* --- 5. NEURAL ENTRY MODAL --- */}
      {isLogModalOpen && (
@@ -751,6 +786,25 @@ const [filters, setFilters] = useState({
                   <div className="space-y-8">
                   <div className="space-y-4">
     <label className="text-[9px] font-black uppercase text-white/30 tracking-widest block">Market Vision (Image or URL)</label>
+                    {/* MT5 SYNC SECTION */}
+<div className="col-span-full mt-4 p-6 border-2 border-dashed border-white/10 rounded-3xl bg-white/5 hover:border-purple-500/50 transition-all text-center">
+  <input 
+    type="file" 
+    accept=".csv" 
+    onChange={handleFileUpload} 
+    className="hidden" 
+    id="mt5-upload" 
+  />
+  <label htmlFor="mt5-upload" className="cursor-pointer">
+    <div className="flex flex-col items-center gap-2">
+      <div className="w-12 h-12 rounded-full bg-purple-500/20 flex items-center justify-center text-purple-500">
+        <Upload size={20} />
+      </div>
+      <p className="text-xs font-bold uppercase tracking-widest">Sync MT5 History</p>
+      <p className="text-[10px] text-white/40">Drop your exported .csv report here</p>
+    </div>
+  </label>
+</div>
                     {/* 1. Functional Image Upload Box */}
     <div 
       onClick={() => document.getElementById('imageUpload').click()}
@@ -820,19 +874,21 @@ const [filters, setFilters] = useState({
             </div>
           </div>
         )}
-      {/* FLOATING ACTION BUTTON (Neural FAB) */}
-      <button 
-          onClick={() => setIsLogModalOpen(true)}
-          className="fixed bottom-10 right-10 w-20 h-20 rounded-full bg-white text-black flex items-center justify-center shadow-[0_20px_50px_rgba(255,255,255,0.3)] hover:scale-110 active:scale-90 transition-all z-40 group"
-        >
-          <Plus size={32} strokeWidth={3} className="group-hover:rotate-90 transition-transform duration-500" />
-          <div className="absolute inset-0 rounded-full bg-white animate-ping opacity-20 pointer-events-none" />
-        </button>
 
-        </div>
-      </main> 
-    </div> 
-  </div> 
+       {/* FLOATING ACTION BUTTON (Neural FAB) */}
+      <button 
+        onClick={() => setIsLogModalOpen(true)}
+        className="fixed bottom-10 right-10 w-20 h-20 rounded-full bg-white text-black flex items-center justify-center shadow-[0_20px_50px_rgba(255,255,255,0.3)] hover:scale-110 active:scale-90 transition-all z-40 group"
+      >
+        <Plus size={32} strokeWidth={3} className="group-hover:rotate-90 transition-transform duration-500" />
+        <div className="absolute inset-0 rounded-full bg-white animate-ping opacity-20 pointer-events-none" />
+      </button>
+
+    </div> {/* Closes the div from line 165 */}
+  </main> {/* Closes the main from line 164 */}
+</div> {/* Closes the div from line 59 */}
+</div> {/* Closes the div from line 49 */}
+</>
   );
 };
 
