@@ -33,6 +33,13 @@ const TradingTerminal = () => {
     background: '#020408',
     glowIntensity: 0.15
   });
+  const [entryImage, setEntryImage] = useState(null);
+const [chartUrl, setChartUrl] = useState('');
+const [filters, setFilters] = useState({
+  asset: 'ALL',
+  strategy: 'ALL',
+  direction: 'ALL'
+});
 
   const [sessionMetrics, setSessionMetrics] = useState({
     alpha: 94.2,
@@ -365,74 +372,99 @@ const TradingTerminal = () => {
                   </div> {/* Closes the Grid containing Calendar + Insights */}
                 </>
               )}
-
-
               {activeTab === 'SYLLEDGE' && (
-                <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h3 className="text-2xl font-black italic tracking-tighter">SYLLEDGE DATA MINE</h3>
-                      <p className="text-[10px] font-bold text-white/30 uppercase tracking-[0.4em]">Proprietary Execution Log</p>
-                    </div>
-                    <div className="flex gap-4">
-                      <button className="px-6 py-3 bg-white/5 border border-white/10 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-white/10 transition-all flex items-center gap-2">
-                        <Download size={14} /> Export CSV
-                      </button>
-                      <button className="px-6 py-3 bg-purple-500 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-purple-600 transition-all shadow-lg shadow-purple-500/20 flex items-center gap-2">
-                        <Database size={14} /> Sync MT5
-                      </button>
-                    </div>
-                  </div>
+  <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+    <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6">
+      <div>
+        <h3 className="text-2xl font-black italic tracking-tighter">SYLLEDGE DATA MINE</h3>
+        <p className="text-[10px] font-bold text-white/30 uppercase tracking-[0.4em]">Proprietary Execution Log</p>
+      </div>
 
-                  <div className="bg-white/5 border border-white/5 rounded-[32px] overflow-hidden">
-                    <table className="w-full text-left border-collapse">
-                      <thead>
-                        <tr className="border-b border-white/5 bg-white/5">
-                          {['Asset', 'Type', 'Entry', 'Size', 'PnL', 'Status', 'Insights'].map((head) => (
-                            <th key={head} className="p-6 text-[9px] font-black uppercase tracking-[0.2em] text-white/40">{head}</th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-white/5">
-                        {[
-                          { pair: 'XAUUSD', type: 'LONG', price: '2024.45', size: '2.50', pnl: '+ $1,420', status: 'WIN', alpha: '92%' },
-                          { pair: 'BTCUSD', type: 'SHORT', price: '64210.0', size: '1.00', pnl: '- $450', status: 'LOSS', alpha: '45%' },
-                          { pair: 'EURUSD', type: 'LONG', price: '1.08542', size: '10.0', pnl: '+ $890', status: 'WIN', alpha: '88%' },
-                        ].map((trade, i) => (
-                          <tr key={i} className="group hover:bg-white/[0.02] transition-colors cursor-pointer">
-                            <td className="p-6">
-                              <div className="flex items-center gap-3">
-                                <div className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-[10px] font-black">{trade.pair.substring(0,2)}</div>
-                                <span className="text-xs font-black tracking-tighter">{trade.pair}</span>
-                              </div>
-                            </td>
-                            <td className="p-6">
-                              <span className={`text-[10px] font-black ${trade.type === 'LONG' ? 'text-emerald-500' : 'text-rose-500'}`}>{trade.type}</span>
-                            </td>
-                            <td className="p-6 text-xs font-mono text-white/60">{trade.price}</td>
-                            <td className="p-6 text-xs font-mono text-white/60">{trade.size}</td>
-                            <td className={`p-6 text-xs font-black ${trade.pnl.includes('+') ? 'text-emerald-500' : 'text-rose-500'}`}>
-                              <span className={isPrivacyMode ? 'blur-md' : ''}>{trade.pnl}</span>
-                            </td>
-                            <td className="p-6">
-                              <div className={`text-[8px] font-black px-2 py-1 rounded border inline-block ${trade.status === 'WIN' ? 'border-emerald-500/50 text-emerald-500' : 'border-rose-500/50 text-rose-500'}`}>
-                                {trade.status}
-                              </div>
-                            </td>
-                            <td className="p-6">
-                              <div className="flex items-center gap-2">
-                                <Sparkles size={12} className="text-purple-500" />
-                                <span className="text-[10px] font-bold text-white/60 tracking-tight">Alpha Score: {trade.alpha}</span>
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              )}
+      {/* DYNAMIC FILTER BAR */}
+      <div className="flex flex-wrap gap-4 items-center bg-white/5 p-2 rounded-[24px] border border-white/5">
+        <div className="flex flex-col px-4">
+          <label className="text-[7px] font-black uppercase text-purple-500 mb-1">Asset</label>
+          <select 
+            value={filters.asset}
+            onChange={(e) => setFilters({...filters, asset: e.target.value})}
+            className="bg-transparent text-[10px] font-black uppercase outline-none cursor-pointer"
+          >
+            <option value="ALL">All Assets</option>
+            <option value="XAUUSD">XAUUSD</option>
+            <option value="GER30">GER30</option>
+            <option value="NAS100">NAS100</option>
+          </select>
+        </div>
+        
+        <div className="w-[1px] h-8 bg-white/10" />
 
+        <div className="flex flex-col px-4">
+          <label className="text-[7px] font-black uppercase text-purple-500 mb-1">Strategy</label>
+          <select 
+            value={filters.strategy}
+            onChange={(e) => setFilters({...filters, strategy: e.target.value})}
+            className="bg-transparent text-[10px] font-black uppercase outline-none cursor-pointer"
+          >
+            <option value="ALL">All Plays</option>
+            <option value="SILVER_BULLET">Silver Bullet</option>
+            <option value="LIQUIDITY">Liquidity Grab</option>
+          </select>
+        </div>
+
+        <div className="w-[1px] h-8 bg-white/10" />
+
+        <div className="flex flex-col px-4">
+          <label className="text-[7px] font-black uppercase text-purple-500 mb-1">Direction</label>
+          <select 
+            value={filters.direction}
+            onChange={(e) => setFilters({...filters, direction: e.target.value})}
+            className="bg-transparent text-[10px] font-black uppercase outline-none cursor-pointer"
+          >
+            <option value="ALL">Overall</option>
+            <option value="LONG">Longs Only</option>
+            <option value="SHORT">Shorts Only</option>
+          </select>
+        </div>
+      </div>
+
+      <div className="flex gap-4">
+        <button className="px-6 py-3 bg-purple-500 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-purple-600 transition-all shadow-lg shadow-purple-500/20 flex items-center gap-2">
+          <Database size={14} /> Sync MT5
+        </button>
+      </div>
+    </div>
+
+    {/* SUB-VISUALIZATION: MINI KPI CARDS */}
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      {[
+        { label: 'Edge Score', val: '88%', sub: filters.asset },
+        { label: 'Profit Factor', val: '2.4', sub: filters.strategy },
+        { label: 'Avg RR', val: '1:3.2', sub: 'Calculated' },
+        { label: 'Expectancy', val: '$420', sub: 'Per Trade' }
+      ].map((stat, i) => (
+        <div key={i} className="p-5 bg-white/5 border border-white/5 rounded-2xl">
+          <p className="text-[7px] font-black text-purple-500 uppercase tracking-widest mb-1">{stat.label}</p>
+          <p className="text-xl font-black italic tracking-tighter">{stat.val}</p>
+          <p className="text-[8px] font-bold text-white/20 uppercase mt-1">{stat.sub}</p>
+        </div>
+      ))}
+    </div>
+
+    {/* TABLE SECTION */}
+    <div className="bg-white/5 border border-white/5 rounded-[32px] overflow-hidden">
+      <table className="w-full text-left border-collapse">
+        <thead>
+          <tr className="border-b border-white/5 bg-white/5">
+            {['Asset', 'Type', 'Entry', 'Size', 'PnL', 'Status', 'Insights'].map((head) => (
+              <th key={head} className="p-6 text-[9px] font-black uppercase tracking-[0.2em] text-white/40">{head}</th>
+            ))}
+          </tr>
+        </thead>
+        {/* Table Body would go here */}
+      </table>
+    </div>
+  </div>
+)}
               {activeTab === 'BACKTEST' && (
                 <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
                   <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -694,10 +726,47 @@ const TradingTerminal = () => {
 
                   {/* RIGHT COLUMN: VISION & PSYCHOLOGY */}
                   <div className="space-y-8">
-                    <div className="aspect-video bg-white/5 border-2 border-dashed border-white/10 rounded-3xl flex flex-col items-center justify-center group hover:border-purple-500/50 transition-all cursor-pointer">
-                      <ImageIcon size={32} className="text-white/20 group-hover:text-purple-500 transition-colors mb-4" />
-                      <p className="text-[10px] font-black uppercase tracking-widest text-white/20">Drop Vision Sync / Chart</p>
-                    </div>
+                  <div className="space-y-4">
+    <label className="text-[9px] font-black uppercase text-white/30 tracking-widest block">Market Vision (Image or URL)</label>
+                    {/* 1. Functional Image Upload Box */}
+    <div 
+      onClick={() => document.getElementById('imageUpload').click()}
+      className="aspect-video bg-white/5 border-2 border-dashed border-white/10 rounded-3xl flex flex-col items-center justify-center group hover:border-purple-500/50 transition-all cursor-pointer relative overflow-hidden"
+    >
+      {entryImage ? (
+        <img src={entryImage} alt="Preview" className="w-full h-full object-cover" />
+      ) : (
+        <>
+          <ImageIcon size={32} className="text-white/20 group-hover:text-purple-500 transition-colors mb-4" />
+          <p className="text-[10px] font-black uppercase tracking-widest text-white/20">Click to Upload Chart</p>
+        </>
+        )}
+        <input 
+          id="imageUpload" 
+          type="file" 
+          accept="image/*" 
+          className="hidden" 
+          onChange={(e) => {
+            const file = e.target.files[0];
+            if (file) setEntryImage(URL.createObjectURL(file));
+          }} 
+        />
+      </div>
+
+      {/* 2. New URL Input Field */}
+    <div className="relative group">
+      <div className="absolute inset-y-0 left-5 flex items-center pointer-events-none">
+        <Globe size={14} className="text-white/20 group-focus-within:text-purple-500 transition-colors" />
+      </div>
+      <input 
+        type="text" 
+        placeholder="Or paste TradingView/Chart URL..." 
+        value={chartUrl}
+        onChange={(e) => setChartUrl(e.target.value)}
+        className="w-full bg-white/5 border border-white/10 rounded-2xl p-5 pl-12 text-sm font-bold outline-none focus:border-purple-500 transition-all" 
+      />
+    </div>
+  </div>
 
                     <div className="space-y-4">
                     <label className="text-[9px] font-black uppercase text-white/30 tracking-widest block">Mindset Tags</label>
