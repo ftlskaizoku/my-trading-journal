@@ -83,10 +83,11 @@ const TradingTerminal = () => {
   const [tradeForm,            setTradeForm]            = useState({ date: '', strategy: '', grade: 'A', asset: 'XAUUSD', direction: 'LONG', entry: '', exit: '', sl: '', tp: '', rr: '', pnl: '', narrative: '', mindsetTags: [], psychNarrative: '', chartUrl: '' });
   const [entryImage,           setEntryImage]           = useState(null);
   const [entryImagePreview,    setEntryImagePreview]    = useState(null);
-  const [playbook,             setPlaybook]             = useState([{ id: 1, name: 'ICT Silver Bullet', timeframe: '15M', description: 'London/NY session displacement into FVG with liquidity sweep confirmation.', confluences: ['FVG Present', 'Liquidity Swept', 'Market Structure Shift', 'Session Time Valid', 'HTF PD Array'], grading: { 'A+': ['FVG Present', 'Liquidity Swept', 'Market Structure Shift', 'Session Time Valid', 'HTF PD Array'], A: ['FVG Present', 'Liquidity Swept', 'Market Structure Shift'], 'B+': ['FVG Present', 'Liquidity Swept'], B: ['FVG Present'] }, active: true }]);
+  const [playbook,             setPlaybook]             = useState([{ id: 1, name: 'ICT Silver Bullet', timeframe: '15M', description: 'London/NY session displacement into FVG with liquidity sweep confirmation.', confluences: { BUY: ['FVG Present', 'Liquidity Swept', 'Bullish MSS', 'Session Time Valid', 'HTF PD Array'], SELL: ['Bearish FVG', 'Buy-Side Liq Swept', 'Bearish MSS', 'Session Time Valid', 'HTF PD Array'] }, setupImages: { BUY: null, SELL: null }, grading: { 'A+': ['FVG Present', 'Liquidity Swept', 'MSS', 'Session Time Valid', 'HTF Array'], A: ['FVG Present', 'Liquidity Swept', 'MSS'], 'B+': ['FVG Present', 'Liquidity Swept'], B: ['FVG Present'] }, active: true }]);
   const [selectedPlaybookId,   setSelectedPlaybookId]   = useState(null);
+  const [playbookViewDir,      setPlaybookViewDir]      = useState({}); // { [stratId]: 'BUY'|'SELL' }
   const [isCreatingStrategy,   setIsCreatingStrategy]   = useState(false);
-  const [newStrategy,          setNewStrategy]          = useState({ name: '', timeframe: '15M', description: '', confluences: [], newConfluence: '' });
+  const [newStrategy,          setNewStrategy]          = useState({ name: '', timeframe: '15M', description: '', confluences: { BUY: [], SELL: [] }, newConfluence: '', activeDir: 'BUY', setupImages: { BUY: null, SELL: null } });
   const [sylledgeMessages,     setSylledgeMessages]     = useState([{ role: 'assistant', content: 'Neural link established. I am SYLLEDGE — your AI trading analyst. Share your strategy profile and trade data, and I will provide actionable analysis to improve your results.' }]);
   const [sylledgeInput,        setSylledgeInput]        = useState('');
   const [isAILoading,          setIsAILoading]          = useState(false);
@@ -195,9 +196,19 @@ const TradingTerminal = () => {
     try {
       const TOKEN   = process.env.NEXT_PUBLIC_METAAPI_TOKEN;
       const ACCOUNT = process.env.NEXT_PUBLIC_METAAPI_ACCOUNT_ID;
-      if (!TOKEN || !ACCOUNT) { alert('Add MetaAPI credentials to .env.local'); return; }
+      if (!TOKEN || !ACCOUNT) {
+        alert(
+          'MetaAPI credentials missing.\n\n' +
+          '📁 LOCAL: Add to your .env.local file:\n' +
+          'NEXT_PUBLIC_METAAPI_TOKEN=your_token\n' +
+          'NEXT_PUBLIC_METAAPI_ACCOUNT_ID=your_account_id\n\n' +
+          '☁️ VERCEL: Go to your Vercel project → Settings → Environment Variables and add these two variables there.'
+        );
+        setIsSyncing(false);
+        return;
+      }
       const res = await fetch(`https://mt-client-api-v1.new-york.agiliumtrade.ai/users/current/accounts/${ACCOUNT}/history-orders/filled?from=2025-01-01T00:00:00.000Z&to=2026-12-31T23:59:59.999Z`, { headers: { 'auth-token': TOKEN } });
-      if (res.status === 404) { alert('Account not DEPLOYED in MetaApi.'); return; }
+      if (res.status === 404) { alert('Account not DEPLOYED in MetaApi dashboard. Go to MetaApi → Accounts → Deploy.'); setIsSyncing(false); return; }
       if (!res.ok) throw new Error('Sync failed');
       const data  = await res.json();
       const live  = data.map(t => ({ name: new Date(t.doneTime).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), val: t.profit }));
@@ -323,9 +334,9 @@ const TradingTerminal = () => {
         /* Mobile fixes */
         @media (max-width: 768px) {
           .settings-layout    { flex-direction: column !important; }
-          .settings-sidebar   { width: 100% !important; position: static !important; display: flex !important; flex-direction: row !important; overflow-x: auto !important; gap: 4px !important; padding: 8px !important; }
-          .settings-sidebar button { flex-shrink: 0 !important; white-space: nowrap !important; }
-          .settings-content   { padding: 16px !important; }
+          .settings-sidebar   { width: 100% !important; position: static !important; display: flex !important; flex-direction: row !important; overflow-x: auto !important; gap: 4px !important; padding: 8px !important; border-radius: 16px !important; }
+          .settings-sidebar button { flex-shrink: 0 !important; white-space: nowrap !important; min-width: fit-content !important; }
+          .settings-content   { padding: 12px 0 !important; width: 100% !important; max-width: 100% !important; }
           .ai-panel-layout    { display: flex !important; flex-direction: column !important; height: auto !important; }
           .ai-config-panel    { max-height: 50vh; overflow-y: auto; }
           .ai-chat-panel      { height: 55vh !important; min-height: 320px; }
@@ -336,10 +347,18 @@ const TradingTerminal = () => {
           .modal-inner        { border-radius: 24px 24px 0 0 !important; max-width: 100% !important; width: 100% !important; }
           .modal-grid         { grid-template-columns: 1fr !important; }
           header              { height: auto !important; min-height: 56px !important; padding: 10px 14px !important; }
+          /* KPI cards: prevent overflow, ensure gauge fits */
+          .kpi-card-inner     { flex-wrap: wrap !important; gap: 4px !important; }
+          .kpi-gauge          { flex-shrink: 0 !important; }
+          /* Notifications/Security toggles never get cut off */
+          .toggle-row         { flex-wrap: nowrap !important; gap: 12px !important; }
+          .toggle-row .toggle-info { flex: 1 1 0 !important; min-width: 0 !important; }
         }
         @media (max-width: 480px) {
           .kpi-grid   { grid-template-columns: 1fr 1fr !important; }
           .chart-wrap { height: 200px !important; }
+          /* Smaller font on KPI values */
+          .kpi-val    { font-size: 1.1rem !important; }
         }
       `}</style>
 
@@ -447,14 +466,14 @@ const TradingTerminal = () => {
                       { label: 'Day Win %',    val: `${stats.winRate}%`,   gauge: { v: parseFloat(stats.winRate),                                        c: '#3b82f6' }, sub: null },
                       { label: 'Avg Win/Loss', val: `$${stats.avgWin}`,   winLoss: true },
                     ].map((c, i) => (
-                      <div key={i} style={{ background: tk.surface, borderColor: tk.border }} className="p-4 md:p-5 rounded-2xl border hover:border-brand/30 transition-all">
+                      <div key={i} style={{ background: tk.surface, borderColor: tk.border }} className="p-3 md:p-5 rounded-2xl border hover:border-brand/30 transition-all overflow-hidden">
                         <p style={{ color: tk.textMuted }} className="text-[7px] font-black uppercase tracking-widest mb-2">{c.label}</p>
-                        <div className="flex items-end justify-between gap-2">
-                          <div className="min-w-0">
-                            <p style={{ color: c.color || tk.text, filter: isPrivacyMode ? 'blur(8px)' : 'none' }} className="text-xl md:text-2xl font-black italic tracking-tighter truncate">{c.val}</p>
+                        <div className="kpi-card-inner flex items-center justify-between gap-1">
+                          <div className="min-w-0 flex-1">
+                            <p style={{ color: c.color || tk.text, filter: isPrivacyMode ? 'blur(8px)' : 'none' }} className="kpi-val text-lg md:text-2xl font-black italic tracking-tighter truncate">{c.val}</p>
                             {c.sub && <p style={{ color: tk.textDim }} className="text-[7px] font-bold uppercase mt-1">{c.sub}</p>}
                           </div>
-                          {c.gauge && <GaugeChart value={c.gauge.v} color={c.gauge.c} size={64}/>}
+                          {c.gauge && <div className="kpi-gauge flex-shrink-0"><GaugeChart value={c.gauge.v} color={c.gauge.c} size={52}/></div>}
                         </div>
                         {c.winLoss && (
                           <div className="mt-2">
@@ -817,12 +836,15 @@ const TradingTerminal = () => {
                     </button>
                   </div>
 
+                  {/* ── CREATE STRATEGY FORM ── */}
                   {isCreatingStrategy && (
-                    <div style={{ background: tk.surface, borderColor: `${brand}40` }} className="rounded-2xl border-2 p-5 space-y-4">
+                    <div style={{ background: tk.surface, borderColor: `${brand}40` }} className="rounded-2xl border-2 p-5 space-y-5">
                       <div className="flex items-center justify-between">
                         <h3 style={{ color: tk.text }} className="text-base font-black uppercase">Create Strategy</h3>
                         <button onClick={() => setIsCreatingStrategy(false)} style={{ color: tk.textMuted }}><X size={16}/></button>
                       </div>
+
+                      {/* Basic info */}
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <input placeholder="Strategy Name" value={newStrategy.name} onChange={e => setNewStrategy(s => ({ ...s, name: e.target.value }))}
                           style={{ background: tk.input, borderColor: tk.border, color: tk.text }} className="rounded-xl border p-3 text-sm font-bold outline-none focus:border-brand transition-all"/>
@@ -833,76 +855,165 @@ const TradingTerminal = () => {
                       </div>
                       <textarea rows={2} placeholder="Strategy description..." value={newStrategy.description} onChange={e => setNewStrategy(s => ({ ...s, description: e.target.value }))}
                         style={{ background: tk.input, borderColor: tk.border, color: tk.text }} className="w-full rounded-xl border p-3 text-sm outline-none resize-none focus:border-brand transition-all"/>
+
+                      {/* Direction tabs for confluences */}
                       <div>
-                        <label style={{ color: tk.textMuted }} className="text-[7px] font-black uppercase tracking-widest block mb-2">Add Confluences</label>
-                        <div className="flex gap-2 mb-2">
-                          <input placeholder="e.g. FVG Present" value={newStrategy.newConfluence} onChange={e => setNewStrategy(s => ({ ...s, newConfluence: e.target.value }))}
-                            onKeyDown={e => { if (e.key === 'Enter' && newStrategy.newConfluence.trim()) setNewStrategy(s => ({ ...s, confluences: [...s.confluences, s.newConfluence.trim()], newConfluence: '' })); }}
-                            style={{ background: tk.input, borderColor: tk.border, color: tk.text }} className="flex-1 rounded-xl border p-3 text-sm outline-none focus:border-brand transition-all"/>
-                          <button onClick={() => { if (newStrategy.newConfluence.trim()) setNewStrategy(s => ({ ...s, confluences: [...s.confluences, s.newConfluence.trim()], newConfluence: '' })); }}
-                            style={{ backgroundColor: brand }} className="px-4 py-2 rounded-xl text-white text-[9px] font-black uppercase">Add</button>
+                        <div className="flex items-center justify-between mb-3">
+                          <label style={{ color: tk.textMuted }} className="text-[7px] font-black uppercase tracking-widest">Confluences by Direction</label>
+                          <div style={{ background: tk.input, borderColor: tk.border }} className="flex rounded-xl border overflow-hidden">
+                            {['BUY','SELL'].map(dir => (
+                              <button key={dir} onClick={() => setNewStrategy(s => ({ ...s, activeDir: dir }))}
+                                style={{ backgroundColor: newStrategy.activeDir === dir ? (dir === 'BUY' ? '#10b981' : '#ef4444') : 'transparent', color: newStrategy.activeDir === dir ? 'white' : tk.textMuted }}
+                                className="px-4 py-1.5 text-[8px] font-black uppercase transition-all">{dir}</button>
+                            ))}
+                          </div>
                         </div>
-                        <div className="flex flex-wrap gap-2">
-                          {newStrategy.confluences.map((c, i) => (
-                            <span key={i} style={{ backgroundColor: `${brand}20`, color: brand, borderColor: `${brand}40` }} className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[8px] font-black border">
-                              {c} <button onClick={() => setNewStrategy(s => ({ ...s, confluences: s.confluences.filter((_, j) => j !== i) }))}><X size={9}/></button>
+                        <div className="flex gap-2 mb-2">
+                          <input placeholder={`Add ${newStrategy.activeDir} confluence...`}
+                            value={newStrategy.newConfluence}
+                            onChange={e => setNewStrategy(s => ({ ...s, newConfluence: e.target.value }))}
+                            onKeyDown={e => { if (e.key === 'Enter' && newStrategy.newConfluence.trim()) setNewStrategy(s => ({ ...s, confluences: { ...s.confluences, [s.activeDir]: [...s.confluences[s.activeDir], s.newConfluence.trim()] }, newConfluence: '' })); }}
+                            style={{ background: tk.input, borderColor: tk.border, color: tk.text }} className="flex-1 rounded-xl border p-3 text-sm outline-none focus:border-brand transition-all"/>
+                          <button onClick={() => { if (newStrategy.newConfluence.trim()) setNewStrategy(s => ({ ...s, confluences: { ...s.confluences, [s.activeDir]: [...s.confluences[s.activeDir], s.newConfluence.trim()] }, newConfluence: '' })); }}
+                            style={{ backgroundColor: newStrategy.activeDir === 'BUY' ? '#10b981' : '#ef4444' }} className="px-4 py-2 rounded-xl text-white text-[9px] font-black uppercase">Add</button>
+                        </div>
+                        <div className="flex flex-wrap gap-2 min-h-[32px]">
+                          {newStrategy.confluences[newStrategy.activeDir].map((c, i) => (
+                            <span key={i} style={{ backgroundColor: newStrategy.activeDir === 'BUY' ? '#10b98120' : '#ef444420', color: newStrategy.activeDir === 'BUY' ? '#10b981' : '#ef4444', borderColor: newStrategy.activeDir === 'BUY' ? '#10b98140' : '#ef444440' }}
+                              className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[8px] font-black border">
+                              {c} <button onClick={() => setNewStrategy(s => ({ ...s, confluences: { ...s.confluences, [s.activeDir]: s.confluences[s.activeDir].filter((_, j) => j !== i) } }))}><X size={9}/></button>
                             </span>
+                          ))}
+                          {newStrategy.confluences[newStrategy.activeDir].length === 0 && <p style={{ color: tk.textDim }} className="text-[8px] italic">No {newStrategy.activeDir} confluences yet</p>}
+                        </div>
+                      </div>
+
+                      {/* Setup images BUY + SELL */}
+                      <div>
+                        <label style={{ color: tk.textMuted }} className="text-[7px] font-black uppercase tracking-widest block mb-3">Setup Reference Images</label>
+                        <div className="grid grid-cols-2 gap-3">
+                          {['BUY','SELL'].map(dir => (
+                            <div key={dir}>
+                              <p style={{ color: dir === 'BUY' ? '#10b981' : '#ef4444' }} className="text-[7px] font-black uppercase tracking-widest mb-1.5">{dir} Setup</p>
+                              <label style={{ borderColor: newStrategy.setupImages[dir] ? (dir === 'BUY' ? '#10b981' : '#ef4444') : tk.border, background: tk.input }}
+                                className="aspect-video rounded-xl border-2 border-dashed flex flex-col items-center justify-center cursor-pointer hover:opacity-80 transition-all relative overflow-hidden block">
+                                {newStrategy.setupImages[dir]
+                                  ? <img src={newStrategy.setupImages[dir]} className="w-full h-full object-cover" alt={`${dir} setup`}/>
+                                  : <>
+                                      <ImageIcon size={20} style={{ color: tk.textDim }} className="mb-1"/>
+                                      <p style={{ color: tk.textDim }} className="text-[7px] font-black uppercase">Upload {dir}</p>
+                                    </>
+                                }
+                                <input type="file" accept="image/*" className="hidden" onChange={e => {
+                                  const f = e.target.files[0];
+                                  if (!f) return;
+                                  const reader = new FileReader();
+                                  reader.onload = ev => setNewStrategy(s => ({ ...s, setupImages: { ...s.setupImages, [dir]: ev.target.result } }));
+                                  reader.readAsDataURL(f);
+                                }}/>
+                              </label>
+                            </div>
                           ))}
                         </div>
                       </div>
+
                       <button onClick={() => {
                         if (!newStrategy.name.trim()) return;
-                        const s = { id: Date.now(), name: newStrategy.name, timeframe: newStrategy.timeframe, description: newStrategy.description, confluences: newStrategy.confluences, grading: { 'A+': [], A: [], 'B+': [], B: [] }, active: true };
+                        const s = { id: Date.now(), name: newStrategy.name, timeframe: newStrategy.timeframe, description: newStrategy.description, confluences: newStrategy.confluences, setupImages: newStrategy.setupImages, grading: { 'A+': [], A: [], 'B+': [], B: [] }, active: true };
                         setPlaybook(p => { const u = [...p, s]; localStorage.setItem('tradesylla_playbook', JSON.stringify(u)); return u; });
-                        setIsCreatingStrategy(false); setNewStrategy({ name: '', timeframe: '15M', description: '', confluences: [], newConfluence: '' });
+                        setIsCreatingStrategy(false);
+                        setNewStrategy({ name: '', timeframe: '15M', description: '', confluences: { BUY: [], SELL: [] }, newConfluence: '', activeDir: 'BUY', setupImages: { BUY: null, SELL: null } });
                       }} style={{ backgroundColor: brand }} className="w-full py-3 rounded-xl text-[9px] font-black uppercase tracking-widest text-white">
                         Save to Playbook
                       </button>
                     </div>
                   )}
 
+                  {/* ── STRATEGY CARDS ── */}
                   <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                    {playbook.map(strat => (
-                      <div key={strat.id} style={{ background: tk.surface, borderColor: selectedPlaybookId === strat.id ? brand : tk.border }}
-                        className="rounded-2xl border p-5 cursor-pointer transition-all hover:border-brand/50"
-                        onClick={() => setSelectedPlaybookId(selectedPlaybookId === strat.id ? null : strat.id)}>
-                        <div className="flex items-start justify-between mb-3">
-                          <div>
-                            <h3 style={{ color: tk.text }} className="text-base font-black italic">{strat.name}</h3>
-                            <div className="flex items-center gap-2 mt-1">
-                              <span style={{ backgroundColor: `${brand}20`, color: brand }} className="px-2 py-0.5 rounded-full text-[7px] font-black">{strat.timeframe}</span>
-                              <span className={`px-2 py-0.5 rounded-full text-[7px] font-black ${strat.active ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'}`}>{strat.active ? 'Active' : 'Paused'}</span>
-                            </div>
-                          </div>
-                        </div>
-                        <p style={{ color: tk.textMuted }} className="text-[9px] leading-relaxed mb-3">{strat.description}</p>
-                        <div className="flex flex-wrap gap-1 mb-3">
-                          {strat.confluences.slice(0, 4).map((c, i) => <span key={i} style={{ background: tk.input, color: tk.textMuted, borderColor: tk.border }} className="px-2 py-0.5 rounded-full text-[7px] border">{c}</span>)}
-                          {strat.confluences.length > 4 && <span style={{ color: tk.textDim }} className="text-[7px]">+{strat.confluences.length - 4}</span>}
-                        </div>
-                        <div style={{ borderColor: tk.border }} className="border-t pt-3">
-                          <div className="grid grid-cols-4 gap-1 mb-3">
-                            {['A+','A','B+','B'].map((g, gi) => (
-                              <div key={g} style={{ background: tk.input, borderColor: gi === 0 ? brand : tk.border }} className="rounded-lg border p-1.5 text-center">
-                                <p style={{ color: gi === 0 ? brand : tk.textMuted }} className="text-[8px] font-black">{g}</p>
+                    {playbook.map(strat => {
+                      const dirView = playbookViewDir[strat.id] || 'BUY';
+                      // Handle old format (array) or new format (object)
+                      const confluencesList = Array.isArray(strat.confluences) ? strat.confluences : (strat.confluences[dirView] || []);
+                      const setupImg = strat.setupImages ? strat.setupImages[dirView] : null;
+
+                      return (
+                        <div key={strat.id} style={{ background: tk.surface, borderColor: selectedPlaybookId === strat.id ? brand : tk.border }}
+                          className="rounded-2xl border transition-all hover:border-brand/50 overflow-hidden">
+
+                          {/* Card header */}
+                          <div className="p-5 cursor-pointer" onClick={() => setSelectedPlaybookId(selectedPlaybookId === strat.id ? null : strat.id)}>
+                            <div className="flex items-start justify-between mb-2">
+                              <div>
+                                <h3 style={{ color: tk.text }} className="text-base font-black italic">{strat.name}</h3>
+                                <div className="flex items-center gap-2 mt-1">
+                                  <span style={{ backgroundColor: `${brand}20`, color: brand }} className="px-2 py-0.5 rounded-full text-[7px] font-black">{strat.timeframe}</span>
+                                  <span className={`px-2 py-0.5 rounded-full text-[7px] font-black ${strat.active ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'}`}>{strat.active ? 'Active' : 'Paused'}</span>
+                                </div>
                               </div>
-                            ))}
-                          </div>
-                          {selectedPlaybookId === strat.id && (
-                            <div className="grid grid-cols-2 gap-2">
-                              <button onClick={e => { e.stopPropagation(); setActiveTab('BACKTEST'); setBacktestForm(f => ({ ...f, strategyDesc: strat.description, confluences: strat.confluences.join(', ') })); }}
-                                style={{ borderColor: tk.border, color: tk.textMuted }} className="py-2 rounded-xl border text-[8px] font-black uppercase hover:border-brand hover:text-brand transition-all">
-                                → Backtest
-                              </button>
-                              <button onClick={e => { e.stopPropagation(); setActiveTab('SYLLEDGE'); setSylledgeInput(`Analyze my ${strat.name} strategy`); }}
-                                style={{ backgroundColor: `${brand}20`, color: brand }} className="py-2 rounded-xl text-[8px] font-black uppercase hover:opacity-80 transition-all">
-                                → Sylledge AI
-                              </button>
+                              {/* BUY / SELL direction toggle */}
+                              <div style={{ background: tk.input, borderColor: tk.border }} className="flex rounded-xl border overflow-hidden flex-shrink-0" onClick={e => e.stopPropagation()}>
+                                {['BUY','SELL'].map(dir => (
+                                  <button key={dir} onClick={() => setPlaybookViewDir(v => ({ ...v, [strat.id]: dir }))}
+                                    style={{ backgroundColor: dirView === dir ? (dir === 'BUY' ? '#10b981' : '#ef4444') : 'transparent', color: dirView === dir ? 'white' : tk.textMuted }}
+                                    className="px-2.5 py-1 text-[7px] font-black uppercase transition-all">{dir}</button>
+                                ))}
+                              </div>
                             </div>
-                          )}
+                            <p style={{ color: tk.textMuted }} className="text-[9px] leading-relaxed mb-3">{strat.description}</p>
+
+                            {/* Setup image */}
+                            {setupImg && (
+                              <div className="mb-3 rounded-xl overflow-hidden aspect-video bg-black/20">
+                                <img src={setupImg} alt={`${dirView} setup`} className="w-full h-full object-cover"/>
+                              </div>
+                            )}
+                            {!setupImg && (
+                              <div style={{ background: tk.input, borderColor: tk.border }} className="mb-3 rounded-xl border-2 border-dashed aspect-video flex items-center justify-center">
+                                <p style={{ color: tk.textDim }} className="text-[8px] font-black uppercase">{dirView} Setup Image</p>
+                              </div>
+                            )}
+
+                            {/* Confluences for selected direction */}
+                            <div>
+                              <p style={{ color: dirView === 'BUY' ? '#10b981' : '#ef4444' }} className="text-[7px] font-black uppercase tracking-widest mb-1.5">{dirView} Confluences</p>
+                              <div className="flex flex-wrap gap-1">
+                                {confluencesList.slice(0, 5).map((c, i) => (
+                                  <span key={i} style={{ background: dirView === 'BUY' ? '#10b98115' : '#ef444415', color: dirView === 'BUY' ? '#10b981' : '#ef4444', borderColor: dirView === 'BUY' ? '#10b98130' : '#ef444430' }} className="px-2 py-0.5 rounded-full text-[7px] border">{c}</span>
+                                ))}
+                                {confluencesList.length > 5 && <span style={{ color: tk.textDim }} className="text-[7px]">+{confluencesList.length - 5}</span>}
+                                {confluencesList.length === 0 && <span style={{ color: tk.textDim }} className="text-[7px] italic">No confluences added</span>}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Grade row */}
+                          <div style={{ borderColor: tk.border }} className="px-5 pb-3 border-t pt-3">
+                            <div className="grid grid-cols-4 gap-1 mb-3">
+                              {['A+','A','B+','B'].map((g, gi) => (
+                                <div key={g} style={{ background: tk.input, borderColor: gi === 0 ? brand : tk.border }} className="rounded-lg border p-1.5 text-center">
+                                  <p style={{ color: gi === 0 ? brand : tk.textMuted }} className="text-[8px] font-black">{g}</p>
+                                </div>
+                              ))}
+                            </div>
+
+                            {/* Action buttons when selected */}
+                            {selectedPlaybookId === strat.id && (
+                              <div className="grid grid-cols-2 gap-2">
+                                <button onClick={e => { e.stopPropagation(); setActiveTab('BACKTEST'); setBacktestForm(f => ({ ...f, strategyDesc: strat.description, confluences: confluencesList.join(', ') })); }}
+                                  style={{ borderColor: tk.border, color: tk.textMuted }} className="py-2 rounded-xl border text-[8px] font-black uppercase hover:border-brand hover:text-brand transition-all">
+                                  → Backtest
+                                </button>
+                                <button onClick={e => { e.stopPropagation(); setActiveTab('SYLLEDGE'); setSylledgeInput(`Analyze my ${strat.name} ${dirView} strategy`); }}
+                                  style={{ backgroundColor: `${brand}20`, color: brand }} className="py-2 rounded-xl text-[8px] font-black uppercase hover:opacity-80 transition-all">
+                                  → Sylledge AI
+                                </button>
+                              </div>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -1051,15 +1162,17 @@ const TradingTerminal = () => {
                           { icon: Smartphone, k: 'twoFactor',  label: '2-Factor Authentication', desc: 'Protect your account with 2FA', color: brand },
                           { icon: Bell,       k: 'loginAlerts',label: 'Login Alerts',             desc: 'Notify on new logins',         color: '#3b82f6' },
                         ].map(item => (
-                          <div key={item.k} style={{ background: tk.surface, borderColor: tk.border }} className="rounded-2xl border p-4 flex items-center justify-between gap-4">
-                            <div className="flex items-center gap-3">
+                          <div key={item.k} style={{ background: tk.surface, borderColor: tk.border }} className="rounded-2xl border p-4 toggle-row flex items-center justify-between gap-4">
+                            <div className="flex items-center gap-3 toggle-info min-w-0">
                               <div style={{ backgroundColor: `${item.color}20`, color: item.color }} className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"><item.icon size={16}/></div>
-                              <div>
+                              <div className="min-w-0">
                                 <p style={{ color: tk.text }} className="text-sm font-black">{item.label}</p>
                                 <p style={{ color: tk.textMuted }} className="text-[8px]">{item.desc}</p>
                               </div>
                             </div>
-                            <Toggle value={security[item.k]} onChange={v => setSecurity(s => ({ ...s, [item.k]: v }))}/>
+                            <div className="flex-shrink-0">
+                              <Toggle value={security[item.k]} onChange={v => setSecurity(s => ({ ...s, [item.k]: v }))}/>
+                            </div>
                           </div>
                         ))}
                         <div style={{ background: tk.surface, borderColor: tk.border }} className="rounded-2xl border p-4 space-y-3">
@@ -1096,12 +1209,14 @@ const TradingTerminal = () => {
                             { k: 'weeklyReport',l: 'Weekly Report',  d: 'Performance summary every Monday' },
                             { k: 'emailDigest', l: 'Email Digest',   d: 'Daily digest via email' },
                           ].map((n, i, arr) => (
-                            <div key={n.k} style={{ borderColor: tk.border }} className={`flex items-center justify-between p-4 gap-4 ${i < arr.length - 1 ? 'border-b' : ''}`}>
-                              <div>
+                            <div key={n.k} style={{ borderColor: tk.border }} className={`toggle-row flex items-center justify-between p-4 gap-4 ${i < arr.length - 1 ? 'border-b' : ''}`}>
+                              <div className="toggle-info min-w-0">
                                 <p style={{ color: tk.text }} className="text-sm font-black">{n.l}</p>
                                 <p style={{ color: tk.textMuted }} className="text-[8px]">{n.d}</p>
                               </div>
-                              <Toggle value={notifications[n.k]} onChange={v => setNotifications(nt => ({ ...nt, [n.k]: v }))}/>
+                              <div className="flex-shrink-0">
+                                <Toggle value={notifications[n.k]} onChange={v => setNotifications(nt => ({ ...nt, [n.k]: v }))}/>
+                              </div>
                             </div>
                           ))}
                         </div>
