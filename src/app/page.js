@@ -1,1321 +1,1372 @@
 "use client";
-
-import React, { useState, useEffect, useMemo } from 'react';
+// TRADESYLLA — Clean Rebuild
+// All hooks declared at top level, before any early returns or conditionals
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { supabase } from '../supabaseClient';
-import { 
-  AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, 
-  LineChart, Line, BarChart, Bar, Cell, PieChart, Pie,
-  Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis 
+import {
+  AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer,
+  LineChart, Line, BarChart, Bar, Cell,
+  Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis
 } from 'recharts';
 import {
   Plus, X, Zap, Cpu, Settings, Palette, Brain, Terminal,
-  Fingerprint, Key, Server, Activity, Target, Sparkles,
-  ShieldCheck, History, TrendingUp, Calendar, AlertCircle,
-  LayoutDashboard, Globe, Lock, Clock, ArrowUpRight, BarChart4,
-  LogOut, User, CreditCard, Languages, CheckCircle2, AlertTriangle, 
-  Timer, ZapOff, Image as ImageIcon, ChevronRight, Moon, Sun, 
-  Wallet, Gauge, Database, MessageSquare, Briefcase, Menu, Search, 
-  Download, Upload // Added Upload here
+  ShieldCheck, TrendingUp, Calendar, LayoutDashboard, Globe,
+  Lock, Activity, Target, User, Languages, ChevronRight,
+  Database, Upload, Image as ImageIcon, Send, Sparkles,
+  Eye, EyeOff, Key, Smartphone, Bell, BookOpen, Award,
+  RefreshCw, CheckCircle, AlertTriangle
 } from 'lucide-react';
 
+// ── THEME DEFINITIONS ────────────────────────────────────────────────────────
+const THEMES = {
+  dark:  { bg:'#020408', surface:'rgba(255,255,255,0.04)', border:'rgba(255,255,255,0.07)', text:'#ffffff', textMuted:'rgba(255,255,255,0.45)', textDim:'rgba(255,255,255,0.2)', input:'rgba(255,255,255,0.05)' },
+  light: { bg:'#f0f4f8', surface:'#ffffff',               border:'rgba(0,0,0,0.08)',       text:'#0f172a', textMuted:'rgba(15,23,42,0.55)',  textDim:'rgba(15,23,42,0.3)',  input:'rgba(0,0,0,0.04)' },
+  cyber: { bg:'#000a14', surface:'rgba(0,220,180,0.04)',  border:'rgba(0,220,180,0.12)',   text:'#d8fff8', textMuted:'rgba(0,220,180,0.6)',  textDim:'rgba(0,220,180,0.25)',input:'rgba(0,220,180,0.05)' },
+};
+
+// ── HELPER COMPONENTS (defined outside main component — never cause hook issues) ─
+const GaugeChart = ({ value = 0, max = 100, color = '#10b981', size = 80 }) => {
+  const pct = Math.min(Math.max(value / max, 0), 1);
+  const r = size / 2 - 8;
+  const cx = size / 2, cy = size / 2 + 4;
+  const x1 = cx + r * Math.cos(Math.PI), y1 = cy + r * Math.sin(Math.PI);
+  const endAngle = Math.PI + pct * Math.PI;
+  const x2 = cx + r * Math.cos(endAngle), y2 = cy + r * Math.sin(endAngle);
+  return (
+    <svg width={size} height={size / 2 + 10} viewBox={`0 0 ${size} ${size / 2 + 10}`}>
+      <path d={`M ${cx - r} ${cy} A ${r} ${r} 0 0 1 ${cx + r} ${cy}`} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth={6} strokeLinecap="round"/>
+      {pct > 0 && <path d={`M ${x1} ${y1} A ${r} ${r} 0 ${pct > 0.5 ? 1 : 0} 1 ${x2} ${y2}`} fill="none" stroke={color} strokeWidth={6} strokeLinecap="round"/>}
+    </svg>
+  );
+};
+
+const WinLossBar = ({ avgWin = 0, avgLoss = 0 }) => {
+  const total = Math.abs(avgWin) + Math.abs(avgLoss) || 1;
+  const wp = (Math.abs(avgWin) / total) * 100;
+  return (
+    <div className="w-full h-2 rounded-full overflow-hidden flex mt-1">
+      <div style={{ width: `${wp}%`, backgroundColor: '#10b981' }} className="h-full" />
+      <div style={{ width: `${100 - wp}%`, backgroundColor: '#ef4444' }} className="h-full" />
+    </div>
+  );
+};
+
+const Toggle = ({ value, onChange }) => (
+  <button onClick={() => onChange(!value)}
+    style={{ backgroundColor: value ? 'var(--brand)' : 'rgba(255,255,255,0.1)', transition: 'background 0.3s' }}
+    className="w-14 h-7 rounded-full relative flex-shrink-0">
+    <div style={{ left: value ? '28px' : '4px', transition: 'left 0.3s', backgroundColor: value ? 'white' : 'rgba(255,255,255,0.4)' }}
+      className="absolute top-1 w-5 h-5 rounded-full" />
+  </button>
+);
+
+// ── MAIN COMPONENT ────────────────────────────────────────────────────────────
 const TradingTerminal = () => {
-  // --- 1. CORE STATE & COMMERCIAL ENGINE ---
-  const [hasMounted, setHasMounted] = useState(false);
-  const [activeTab, setActiveTab] = useState('DASHBOARD');
-  const [userTier, setUserTier] = useState('ELITE'); // FREE, PRO, ELITE
-  const [isPrivacyMode, setIsPrivacyMode] = useState(false);
-  const [isSidebarExpanded, setIsSidebarExpanded] = useState(false);
-  const [isLogModalOpen, setIsLogModalOpen] = useState(false);
-  const [currentDate, setCurrentDate] = useState(new Date());
 
-  // Appearance Preferences
-  const [theme, setTheme] = useState({
-    primary: '#a855f7', // Purple Neural
-    background: '#020408',
-    glowIntensity: 0.15
-  });
-  const [liveAccountData, setLiveAccountData] = useState(null);
-const [isSyncing, setIsSyncing] = useState(false);
-const [strategyRules, setStrategyRules] = useState({
-  maxDrawdown: 5,
-  minRR: 2,
-  maxTradesPerDay: 3,
-  stopLossRequired: true
-});
-const [customPlaybook, setCustomPlaybook] = useState([]);
-const [newStrategy, setNewStrategy] = useState({ 
-  name: '', 
-  rules: '', 
-  timeframe: '1H',
-  gradingCriteria: {
-    aplus: '',
-    a: '',
-    bplus: '',
-    b: ''
-  },
-  sampleImage: null 
-});
-const [isCreatingStrategy, setIsCreatingStrategy] = useState(false);
-  const [chartData, setChartData] = useState([
-    { name: 'Mon', val: 4000 }, { name: 'Tue', val: 3000 }, { name: 'Wed', val: 5500 },
-    { name: 'Thu', val: 4800 }, { name: 'Fri', val: 7000 }, { name: 'Sat', val: 6800 }, { name: 'Sun', val: 9000 }
+  // ══ ALL STATE — declared unconditionally at top ══════════════════════════════
+  const [hasMounted,           setHasMounted]           = useState(false);
+  const [activeTab,            setActiveTab]            = useState('DASHBOARD');
+  const [isPrivacyMode,        setIsPrivacyMode]        = useState(false);
+  const [isSidebarExpanded,    setIsSidebarExpanded]    = useState(false);
+  const [isLogModalOpen,       setIsLogModalOpen]       = useState(false);
+  const [currentDate,          setCurrentDate]          = useState(new Date());
+  const [isSyncing,            setIsSyncing]            = useState(false);
+  const [mousePos,             setMousePos]             = useState({ x: 50, y: 50 });
+  const [appearance,           setAppearance]           = useState({ mode: 'dark', primaryColor: '#a855f7' });
+  const [chartData,            setChartData]            = useState([
+    { name: 'Jan 2', val: 420 }, { name: 'Jan 5', val: -150 }, { name: 'Jan 9', val: 630 },
+    { name: 'Jan 12', val: 280 }, { name: 'Jan 16', val: -320 }, { name: 'Jan 19', val: 890 },
+    { name: 'Jan 23', val: 450 }, { name: 'Jan 26', val: -80 }, { name: 'Jan 30', val: 1100 },
   ]);
-  const [selectedGrade, setSelectedGrade] = useState('A');// Default to A
+  const [tradeHistory,         setTradeHistory]         = useState([]);
+  const [filters,              setFilters]              = useState({ asset: 'ALL', strategy: 'ALL', direction: 'ALL' });
+  const [tradeForm,            setTradeForm]            = useState({ date: '', strategy: '', grade: 'A', asset: 'XAUUSD', direction: 'LONG', entry: '', exit: '', sl: '', tp: '', rr: '', pnl: '', narrative: '', mindsetTags: [], psychNarrative: '', chartUrl: '' });
+  const [entryImage,           setEntryImage]           = useState(null);
+  const [entryImagePreview,    setEntryImagePreview]    = useState(null);
+  const [playbook,             setPlaybook]             = useState([{ id: 1, name: 'ICT Silver Bullet', timeframe: '15M', description: 'London/NY session displacement into FVG with liquidity sweep confirmation.', confluences: ['FVG Present', 'Liquidity Swept', 'Market Structure Shift', 'Session Time Valid', 'HTF PD Array'], grading: { 'A+': ['FVG Present', 'Liquidity Swept', 'Market Structure Shift', 'Session Time Valid', 'HTF PD Array'], A: ['FVG Present', 'Liquidity Swept', 'Market Structure Shift'], 'B+': ['FVG Present', 'Liquidity Swept'], B: ['FVG Present'] }, active: true }]);
+  const [selectedPlaybookId,   setSelectedPlaybookId]   = useState(null);
+  const [isCreatingStrategy,   setIsCreatingStrategy]   = useState(false);
+  const [newStrategy,          setNewStrategy]          = useState({ name: '', timeframe: '15M', description: '', confluences: [], newConfluence: '' });
+  const [sylledgeMessages,     setSylledgeMessages]     = useState([{ role: 'assistant', content: 'Neural link established. I am SYLLEDGE — your AI trading analyst. Share your strategy profile and trade data, and I will provide actionable analysis to improve your results.' }]);
+  const [sylledgeInput,        setSylledgeInput]        = useState('');
+  const [isAILoading,          setIsAILoading]          = useState(false);
+  const [strategyProfile,      setStrategyProfile]      = useState({ description: '', confluences: '', riskRules: '' });
+  const [backtestMessages,     setBacktestMessages]     = useState([{ role: 'assistant', content: 'BACKTEST ENGINE online. Describe your strategy, upload reference setups, set your historical range — I will generate a full performance report.' }]);
+  const [backtestInput,        setBacktestInput]        = useState('');
+  const [backtestForm,         setBacktestForm]         = useState({ strategyDesc: '', confluences: '', timeRange: '6M', asset: 'XAUUSD', riskPer: '1', targetRR: '2' });
   const [activeSettingsSubTab, setActiveSettingsSubTab] = useState('ACCOUNT');
-  const radarData = useMemo(() => {
-    if (!chartData || chartData.length < 2) {
-      return [
-        { subject: 'Risk', A: 120, fullMark: 150 }, { subject: 'Timing', A: 98, fullMark: 150 },
-        { subject: 'Edge', A: 86, fullMark: 150 }, { subject: 'Mindset', A: 99, fullMark: 150 },
-        { subject: 'Speed', A: 85, fullMark: 150 }
-      ];
-    }
+  const [profile,              setProfile]              = useState({ name: 'Neural Trader', email: 'elite@tradesylla.ai', bio: '', phone: '', country: '', timezone: 'UTC', currency: 'USD', accountType: 'Live', broker: '' });
+  const [security,             setSecurity]             = useState({ twoFactor: false, loginAlerts: true, sessionTimeout: '30', currentPassword: '', newPassword: '', confirmPassword: '' });
+  const [notifications,        setNotifications]        = useState({ tradeAlerts: true, aiInsights: true, weeklyReport: true, emailDigest: false });
 
-    // Simple Logic: Higher Profit/Loss consistency increases the "Edge" score
-    const totalProfit = chartData.reduce((sum, item) => sum + item.val, 0);
-    const winRate = (chartData.filter(item => item.val > 0).length / chartData.length) * 150;
-    
-    return [
-      { subject: 'Risk', A: 110, fullMark: 150 },
-      { subject: 'Timing', A: 95, fullMark: 150 },
-      { subject: 'Edge', A: Math.min(winRate, 150), fullMark: 150 },
-      { subject: 'Mindset', A: 105, fullMark: 150 },
-      { subject: 'Speed', A: 90, fullMark: 150 }
-    ];
+  // ══ ALL REFS ══════════════════════════════════════════════════════════════════
+  const sylledgeChatRef  = useRef(null);
+  const backtestChatRef  = useRef(null);
+
+  // ══ ALL MEMOS — declared unconditionally ════════════════════════════════════
+  const tk = useMemo(() => THEMES[appearance.mode] || THEMES.dark, [appearance.mode]);
+  const brand = appearance.primaryColor;
+
+  const stats = useMemo(() => {
+    if (!chartData.length) return { winRate: '0.0', profitFactor: '0', totalTrades: 0, netPnL: '0.00', avgWin: '0.00', avgLoss: '0.00', expectancy: '0.00', maxDrawdown: '0.00', bestDay: '0.00', worstDay: '0.00', currentStreak: 0 };
+    const wins   = chartData.filter(t => t.val > 0);
+    const losses = chartData.filter(t => t.val < 0);
+    const winSum  = wins.reduce((s, t) => s + t.val, 0);
+    const lossSum = Math.abs(losses.reduce((s, t) => s + t.val, 0));
+    const avgWin  = wins.length   ? winSum  / wins.length   : 0;
+    const avgLoss = losses.length ? lossSum / losses.length : 0;
+    const expectancy = (wins.length / chartData.length) * avgWin - (losses.length / chartData.length) * avgLoss;
+    let peak = 0, running = 0, maxDD = 0;
+    chartData.forEach(t => { running += t.val; if (running > peak) peak = running; const dd = peak - running; if (dd > maxDD) maxDD = dd; });
+    let streak = 0;
+    for (let i = chartData.length - 1; i >= 0; i--) {
+      const w = chartData[i].val > 0;
+      if (i === chartData.length - 1) { streak = w ? 1 : -1; }
+      else if ((streak > 0 && w) || (streak < 0 && !w)) { streak = w ? streak + 1 : streak - 1; }
+      else break;
+    }
+    return {
+      winRate:       ((wins.length / chartData.length) * 100).toFixed(1),
+      profitFactor:  lossSum > 0 ? (winSum / lossSum).toFixed(2) : winSum > 0 ? '∞' : '0',
+      totalTrades:   chartData.length,
+      netPnL:        chartData.reduce((s, t) => s + t.val, 0).toFixed(2),
+      avgWin:        avgWin.toFixed(2),
+      avgLoss:       avgLoss.toFixed(2),
+      expectancy:    expectancy.toFixed(2),
+      maxDrawdown:   maxDD.toFixed(2),
+      bestDay:       Math.max(...chartData.map(t => t.val)).toFixed(2),
+      worstDay:      Math.min(...chartData.map(t => t.val)).toFixed(2),
+      currentStreak: streak,
+    };
   }, [chartData]);
-  const [strategyNarrative, setStrategyNarrative] = useState('');
-const [entryImage, setEntryImage] = useState(null);
-const [lastTradePnl, setLastTradePnl] = useState(0); // For manual PnL entry
-const [chartUrl, setChartUrl] = useState('');
-const [filters, setFilters] = useState({
-  asset: 'ALL',
-  strategy: 'ALL',
-  direction: 'ALL'
-});
 
-const [appearance, setAppearance] = useState({
-  mode: 'dark',
-  primaryColor: '#a855f7', // Default Purple
-  glowIntensity: 0.5
-});
+  const cumulativePnL = useMemo(() => {
+    let r = 0;
+    return chartData.map(t => ({ name: t.name, cumulative: parseFloat((r += t.val).toFixed(2)), daily: t.val }));
+  }, [chartData]);
 
-// This effect updates the "brand color" across the whole app instantly
-useEffect(() => {
-  document.documentElement.style.setProperty('--brand-primary', appearance.primaryColor);
-  document.documentElement.style.setProperty('--brand-glow', `${appearance.primaryColor}66`); // 40% opacity for glow
-}, [appearance.primaryColor]);
-useEffect(() => {
-  // Load saved appearance on mount
-  const saved = localStorage.getItem('sylledge_appearance');
-  if (saved) {
-    setAppearance(JSON.parse(saved));
-  }
-  setHasMounted(true);
-}, []);
+  const radarData = useMemo(() => {
+    const wr = parseFloat(stats.winRate) / 100;
+    const pf = Math.min(parseFloat(stats.profitFactor) || 0, 3);
+    return [
+      { subject: 'Win Rate',      A: wr * 150,                                                          fullMark: 150 },
+      { subject: 'Profit Factor', A: (pf / 3) * 150,                                                    fullMark: 150 },
+      { subject: 'Expectancy',    A: Math.min(Math.max(parseFloat(stats.expectancy) / 500, 0), 1) * 150, fullMark: 150 },
+      { subject: 'Consistency',   A: 105,                                                                fullMark: 150 },
+      { subject: 'Risk Mgmt',     A: 90,                                                                 fullMark: 150 },
+    ];
+  }, [stats]);
 
-const syncLiveMT5 = async () => {
-  setIsSyncing(true);
-  try {
-    // Replace these with your actual keys from MetaApi
-    const API_TOKEN = 'eyJhbGciOiJSUzUxMiIsInR5cCI6IkpXVCJ9.eyJfaWQiOiJhOWM2NDIyMTU2YTA0MTUzZTY1MDgyMTgzODMwNjE5ZSIsImFjY2Vzc1J1bGVzIjpbeyJpZCI6InRyYWRpbmctYWNjb3VudC1tYW5hZ2VtZW50LWFwaSIsIm1ldGhvZHMiOlsidHJhZGluZy1hY2NvdW50LW1hbmFnZW1lbnQtYXBpOnJlc3Q6cHVibGljOio6KiJdLCJyb2xlcyI6WyJyZWFkZXIiLCJ3cml0ZXIiXSwicmVzb3VyY2VzIjpbIio6JFVTRVJfSUQkOioiXX0seyJpZCI6Im1ldGFhcGktcmVzdC1hcGkiLCJtZXRob2RzIjpbIm1ldGFhcGktYXBpOnJlc3Q6cHVibGljOio6KiJdLCJyb2xlcyI6WyJyZWFkZXIiLCJ3cml0ZXIiXSwicmVzb3VyY2VzIjpbIio6JFVTRVJfSUQkOioiXX0seyJpZCI6Im1ldGFhcGktcnBjLWFwaSIsIm1ldGhvZHMiOlsibWV0YWFwaS1hcGk6d3M6cHVibGljOio6KiJdLCJyb2xlcyI6WyJyZWFkZXIiLCJ3cml0ZXIiXSwicmVzb3VyY2VzIjpbIio6JFVTRVJfSUQkOioiXX0seyJpZCI6Im1ldGFhcGktcmVhbC10aW1lLXN0cmVhbWluZy1hcGkiLCJtZXRob2RzIjpbIm1ldGFhcGktYXBpOndzOnB1YmxpYzoqOioiXSwicm9sZXMiOlsicmVhZGVyIiwid3JpdGVyIl0sInJlc291cmNlcyI6WyIqOiRVU0VSX0lEJDoqIl19LHsiaWQiOiJtZXRhc3RhdHMtYXBpIiwibWV0aG9kcyI6WyJtZXRhc3RhdHMtYXBpOnJlc3Q6cHVibGljOio6KiJdLCJyb2xlcyI6WyJyZWFkZXIiLCJ3cml0ZXIiXSwicmVzb3VyY2VzIjpbIio6JFVTRVJfSUQkOioiXX0seyJpZCI6InJpc2stbWFuYWdlbWVudC1hcGkiLCJtZXRob2RzIjpbInJpc2stbWFuYWdlbWVudC1hcGk6cmVzdDpwdWJsaWM6KjoqIl0sInJvbGVzIjpbInJlYWRlciIsIndyaXRlciJdLCJyZXNvdXJjZXMiOlsiKjokVVNFUl9JRCQ6KiJdfSx7ImlkIjoiY29weWZhY3RvcnktYXBpIiwibWV0aG9kcyI6WyJjb3B5ZmFjdG9yeS1hcGk6cmVzdDpwdWJsaWM6KjoqIl0sInJvbGVzIjpbInJlYWRlciIsIndyaXRlciJdLCJyZXNvdXJjZXMiOlsiKjokVVNFUl9JRCQ6KiJdfSx7ImlkIjoibXQtbWFuYWdlci1hcGkiLCJtZXRob2RzIjpbIm10LW1hbmFnZXItYXBpOnJlc3Q6ZGVhbGluZzoqOioiLCJtdC1tYW5hZ2VyLWFwaTpyZXN0OnB1YmxpYzoqOioiXSwicm9sZXMiOlsicmVhZGVyIiwid3JpdGVyIl0sInJlc291cmNlcyI6WyIqOiRVU0VSX0lEJDoqIl19LHsiaWQiOiJiaWxsaW5nLWFwaSIsIm1ldGhvZHMiOlsiYmlsbGluZy1hcGk6cmVzdDpwdWJsaWM6KjoqIl0sInJvbGVzIjpbInJlYWRlciJdLCJyZXNvdXJjZXMiOlsiKjokVVNFUl9JRCQ6KiJdfV0sImlnbm9yZVJhdGVMaW1pdHMiOmZhbHNlLCJ0b2tlbklkIjoiMjAyMTAyMTMiLCJpbXBlcnNvbmF0ZWQiOmZhbHNlLCJyZWFsVXNlcklkIjoiYTljNjQyMjE1NmEwNDE1M2U2NTA4MjE4MzgzMDYxOWUiLCJpYXQiOjE3NzIyODM5OTR9.kytOcIVkTj6iQThm97_UGIuR4iJ3jB-3lPqj-Ch-XqWKo61ZkhCsbLB2vY4LUzRww7xTDHzpOf5YFHK0My2YecVChYAfLUz6frmhXrd72wzsC1mdKsMrthPpLnzB2Gwn3ryCip3TS3MgJgZtWBgbA-gaYCAmKMzr7KIHDh3UYkXRHnZ4cp-v9rmnlYkT_Teqz-Onl9zWL5mtHzGMmtfdnK9MOmskhrErCWH4PdLzZCFgF3Rj5Cx8M08G9hvNioQGOu_nv8nGQnBk6ID18b7ULQGnr-yFqOqwneoJb1Heb-rCrfslgWwXS3wxDjNlqGD1Da-onZCL6mfkAX4tqj8wfzKrhjMnUGzDnCmnGUAsOHHgwlvY_WAIWUsDu9wZan-HvCi5_qj49Fhy92KGViuKCqsTaTrpCJ05LWnmZhB_mr5yvVHYBP3v1m5jyNTPBICNcI0bQZUmSDoqV3X9coK9qb5AnaWZPKKrgOgwJK3VjzNCHdALMtAQzzbmy6yaQkh5Swc8gan74nAOa_Tkjy_O7OQ_Gqi3j6a8BaD3y5tDhit-U7w79abWHFXgmt-fao9v5o07WUQpaL76NS2h-bblkD6F347yM-zXBMgo8ZtzTnb--Lwl3PDVqxgSOPyO2QNNeKDXNxYJo9M-5A49H8a5EUyjFzD0rlHb75BcTuvWmDk'; 
-    const ACCOUNT_ID = '351af058-646e-47c7-98bb-5b892ff07829';
+  // MUST be before early return — no exceptions
+  const weeklyStats = useMemo(() => ['Week 1', 'Week 2', 'Week 3', 'Week 4'].map((label, i) => ({
+    label,
+    pnl:  [420 + i * 200, -150 + i * 300, 680 + i * 100, 320 - i * 50][i],
+    days: [2, 3, 4, 2][i],
+  })), []);
 
-    // This fetches your filled trade history
-    const response = await fetch(
-      `https://mt-client-api-v1.new-york.agiliumtrade.ai/users/current/accounts/${ACCOUNT_ID}/history-orders/filled?from=2025-01-01T00:00:00.000Z&to=2026-12-31T23:59:59.999Z`, 
-      { 
-        headers: { 'auth-token': API_TOKEN },
-        method: 'GET'
-      }
-    );
-  
-    // NEW GUARD: Handle the "Not Deployed" 404 error gracefully
-    if (response.status === 404) {
-      alert("Neural Bridge Offline: Please ensure your account is 'DEPLOYED' in the MetaApi Dashboard.");
-      setIsSyncing(false);
-      return;
-    }
-
-    if (!response.ok) throw new Error('Neural Link Failed');
-    
-    const data = await response.json();
-    
-
-    // Convert MT5 data into your Chart format
-    const liveTrades = data.map((trade) => ({
-      name: new Date(trade.doneTime).toLocaleDateString('en-US', { weekday: 'short' }),
-      val: trade.profit // Profit/Loss value
-    }));
-
-    if (liveTrades.length > 0) {
-      setChartData(liveTrades);
-    }
-    
-    setIsSyncing(false);
-  } catch (error) {
-    console.error("Sync Error:", error);
-    setIsSyncing(false);
-  }
-};
-// Add these to your existing state definitions
-const [profile, setProfile] = useState({ name: 'Neural Trader', email: 'elite@sylledge.ai', bio: '' });
-const [security, setSecurity] = useState({ twoFactor: false, loginAlerts: true });
-const [preferences, setPreferences] = useState({ language: 'EN', timezone: 'UTC', currency: 'USD' });
-
-
-const handleSyncSettings = () => {
-  setIsSyncing(true);
-  
-  // Save to LocalStorage so it stays when you refresh
-  localStorage.setItem('sylledge_appearance', JSON.stringify(appearance));
-  
-  // Simulate a cloud sync delay
-  setTimeout(() => {
-    setIsSyncing(false);
-  }, 1500);
-};
-
-// --- HELPER: Upload to Supabase Storage ---
-const uploadToSupabase = async (file) => {
-  const fileExt = file.name.split('.').pop();
-  const fileName = `${Math.random()}.${fileExt}`;
-  const filePath = `setups/${fileName}`;
-
-  let { error: uploadError } = await supabase.storage
-    .from('trading-images') // Ensure this bucket exists in your Supabase Dashboard
-    .upload(filePath, file);
-
-  if (uploadError) throw uploadError;
-
-  const { data } = supabase.storage.from('trading-images').getPublicUrl(filePath);
-  return data.publicUrl;
-};
-const handleSaveStrategy = async () => {
-  const { data, error } = await supabase
-    .from('playbook')
-    .insert([{ 
-      name: newStrategy.name, 
-      rules: newStrategy.rules, 
-      timeframe: newStrategy.timeframe 
-    }]);
-
-  if (!error) {
-    setCustomPlaybook([...customPlaybook, newStrategy]);
-    setIsCreatingStrategy(false);
-    setNewStrategy({ name: '', rules: '', timeframe: '1H' });
-  }
-};
-const handleCommitTrade = async () => {
-  try {
-    let imageUrl = null;
-
-    const handleSyncSettings = () => {
-      setIsSyncing(true);
-      
-      // Save to LocalStorage for persistence
-      localStorage.setItem('sylledge_appearance', JSON.stringify(appearance));
-      
-      // Simulate cloud sync delay
-      setTimeout(() => {
-        setIsSyncing(false);
-        alert("Neural Configuration Synced Successfully.");
-      }, 1000);
-    };
-
-    // 1. Upload image to Supabase Storage if it exists
-    if (entryImage) {
-      const fileExt = entryImage.name.split('.').pop();
-      const fileName = `${Math.random()}.${fileExt}`;
-      const filePath = `setups/${fileName}`;
-
-      
-
-      const { error: uploadError } = await supabase.storage
-        .from('trading-images')
-        .upload(filePath, entryImage);
-
-      if (uploadError) throw uploadError;
-
-      const { data } = supabase.storage.from('trading-images').getPublicUrl(filePath);
-      imageUrl = data.publicUrl;
-    }
-
-    // 2. Insert the full record into the Supabase Database
-    const { error } = await supabase.from('trades').insert([{
-      asset: filters.asset,
-      strategy_name: filters.strategy,
-      narrative: strategyNarrative,
-      image_url: imageUrl,
-      pnl: lastTradePnl,
-      timestamp: new Date()
-    }]);
-
-    if (error) throw error;
-
-    // 3. Success: Close modal and reset
-    setIsLogModalOpen(false);
-    setStrategyNarrative('');
-    setEntryImage(null);
-    alert("Neural Link Established: Strategy Stored.");
-
-  } catch (err) {
-    console.error("Storage Error:", err.message);
-    alert("Failed to store strategy: " + err.message);
-  }
-  const tradeData = {
-    asset: filters.asset,
-    strategy_name: filters.strategy,
-    setup_grade: selectedGrade, // Add this line
-    narrative: strategyNarrative,
-    image_url: imageUrl,
-    pnl: lastTradePnl,
-    timestamp: new Date()
-  };
-};
-
-
-const handleFileUpload = (e) => {
-  const file = e.target.files[0];
-  if (!file) return;
-
-  const reader = new FileReader();
-  reader.onload = (event) => {
-    const text = event.target.result;
-    const rows = text.split('\n').slice(1); 
-    const parsedData = rows
-      .filter(row => row.trim() !== "") // Skip empty lines
-      .map((row, index) => {
-        const cols = row.split(',');
-        return { 
-          name: cols[0] || `Trade ${index + 1}`, 
-          val: parseFloat(cols[1]) || 0 
-        };
-      });
-
-    if (parsedData.length > 0) {
-      setChartData(parsedData); // This triggers the UI update
-    }
-  };
-  reader.readAsText(file);
-}
-const stats = useMemo(() => {
-  if (chartData.length === 0) return { winRate: 0, profitFactor: 0, optimizationScore: 0 };
-
-  const wins = chartData.filter(t => t.val > 0);
-  const losses = chartData.filter(t => t.val < 0);
-  
-  // Advanced Optimization: Check for RR violations
-  // (Assuming your CSV/API eventually includes Risk vs Reward data)
-  const rrViolations = chartData.filter(t => t.riskReward < strategyRules.minRR).length;
-  const optimizationScore = Math.max(0, 100 - (rrViolations * 10));
-
-  return {
-    winRate: ((wins.length / chartData.length) * 100).toFixed(1),
-    profitFactor: (wins.reduce((s, t) => s + t.val, 0) / Math.abs(losses.reduce((s, t) => s + t.val, 0) || 1)).toFixed(2),
-    optimizationScore,
-    totalTrades: chartData.length
-  };
-}, [chartData, strategyRules]);
-  const [sessionMetrics, setSessionMetrics] = useState({
-    alpha: 94.2,
-    pnl: 12450,
-    winRate: 74.2,
-    sharpe: 2.1,
-    drawdown: 1.2
-  });
-
-  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
-  const [trades, setTrades] = useState([]);
-
-  // --- 2. ADAPTIVE SHELL LOGIC ---
+  // ══ ALL EFFECTS ═══════════════════════════════════════════════════════════════
   useEffect(() => {
+    const a = localStorage.getItem('tradesylla_appearance');
+    if (a) { try { setAppearance(JSON.parse(a)); } catch (_) {} }
+    const p = localStorage.getItem('tradesylla_profile');
+    if (p) { try { setProfile(JSON.parse(p)); } catch (_) {} }
+    const pb = localStorage.getItem('tradesylla_playbook');
+    if (pb) { try { setPlaybook(JSON.parse(pb)); } catch (_) {} }
     setHasMounted(true);
-    const handleMouseMove = (e) => {
-      setMousePos({ 
-        x: (e.clientX / window.innerWidth) * 100, 
-        y: (e.clientY / window.innerHeight) * 100 
-      });
-    };
-    window.addEventListener('mousemove', handleMouseMove);
-    return () => window.removeEventListener('mousemove', handleMouseMove);
+    const mm = (e) => setMousePos({ x: (e.clientX / window.innerWidth) * 100, y: (e.clientY / window.innerHeight) * 100 });
+    window.addEventListener('mousemove', mm);
+    return () => window.removeEventListener('mousemove', mm);
   }, []);
-  
+
+  useEffect(() => {
+    document.documentElement.style.setProperty('--brand', brand);
+    document.documentElement.style.setProperty('--brand-glow', brand + '44');
+  }, [brand]);
+
+  useEffect(() => { if (sylledgeChatRef.current)  sylledgeChatRef.current.scrollTop  = sylledgeChatRef.current.scrollHeight;  }, [sylledgeMessages]);
+  useEffect(() => { if (backtestChatRef.current)  backtestChatRef.current.scrollTop  = backtestChatRef.current.scrollHeight;  }, [backtestMessages]);
+
+  // ── EARLY RETURN (all hooks are above this line) ──────────────────────────────
   if (!hasMounted) return null;
 
+  // ══ HANDLERS ══════════════════════════════════════════════════════════════════
+  const syncLiveMT5 = async () => {
+    setIsSyncing(true);
+    try {
+      const TOKEN   = process.env.NEXT_PUBLIC_METAAPI_TOKEN;
+      const ACCOUNT = process.env.NEXT_PUBLIC_METAAPI_ACCOUNT_ID;
+      if (!TOKEN || !ACCOUNT) { alert('Add MetaAPI credentials to .env.local'); return; }
+      const res = await fetch(`https://mt-client-api-v1.new-york.agiliumtrade.ai/users/current/accounts/${ACCOUNT}/history-orders/filled?from=2025-01-01T00:00:00.000Z&to=2026-12-31T23:59:59.999Z`, { headers: { 'auth-token': TOKEN } });
+      if (res.status === 404) { alert('Account not DEPLOYED in MetaApi.'); return; }
+      if (!res.ok) throw new Error('Sync failed');
+      const data  = await res.json();
+      const live  = data.map(t => ({ name: new Date(t.doneTime).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), val: t.profit }));
+      if (live.length) setChartData(live);
+    } catch (e) { alert('Sync error: ' + e.message); }
+    finally     { setIsSyncing(false); }
+  };
+
+  const handleFileUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const parsed = ev.target.result.split('\n').slice(1).filter(r => r.trim()).map((r, i) => {
+        const cols = r.split(',');
+        return { name: cols[0]?.trim() || `Trade ${i + 1}`, val: parseFloat(cols[1]) || 0 };
+      });
+      if (parsed.length) setChartData(parsed);
+    };
+    reader.readAsText(file);
+  };
+
+  const handleImageSelect = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setEntryImage(file);
+    setEntryImagePreview(URL.createObjectURL(file));
+  };
+
+  const handleCommitTrade = async () => {
+    try {
+      let imageUrl = null;
+      if (entryImage) {
+        const ext = entryImage.name.split('.').pop();
+        const path = `setups/${Math.random()}.${ext}`;
+        const { error: uploadErr } = await supabase.storage.from('trading-images').upload(path, entryImage);
+        if (uploadErr) throw uploadErr;
+        const { data } = supabase.storage.from('trading-images').getPublicUrl(path);
+        imageUrl = data.publicUrl;
+      }
+      const record = { asset: tradeForm.asset, strategy_name: tradeForm.strategy, setup_grade: tradeForm.grade, narrative: tradeForm.narrative, image_url: imageUrl, pnl: parseFloat(tradeForm.pnl) || 0, direction: tradeForm.direction, timestamp: new Date() };
+      await supabase.from('trades').insert([record]);
+      const entry = { ...tradeForm, image_url: imageUrl, id: Date.now(), timestamp: new Date().toISOString() };
+      setTradeHistory(p => [entry, ...p]);
+      if (tradeForm.pnl) setChartData(p => [...p, { name: tradeForm.date || new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), val: parseFloat(tradeForm.pnl) }]);
+      setIsLogModalOpen(false);
+      setTradeForm({ date: '', strategy: '', grade: 'A', asset: 'XAUUSD', direction: 'LONG', entry: '', exit: '', sl: '', tp: '', rr: '', pnl: '', narrative: '', mindsetTags: [], psychNarrative: '', chartUrl: '' });
+      setEntryImage(null); setEntryImagePreview(null);
+    } catch (err) { alert('Failed: ' + err.message); }
+  };
+
+  const handleSaveSettings = () => {
+    localStorage.setItem('tradesylla_appearance', JSON.stringify(appearance));
+    localStorage.setItem('tradesylla_profile',    JSON.stringify(profile));
+    setIsSyncing(true);
+    setTimeout(() => setIsSyncing(false), 800);
+  };
+
+  const sendToAI = async (tab) => {
+    const input = tab === 'SYLLEDGE' ? sylledgeInput : backtestInput;
+    if (!input.trim() || isAILoading) return;
+    const msgs    = tab === 'SYLLEDGE' ? sylledgeMessages  : backtestMessages;
+    const setMsgs = tab === 'SYLLEDGE' ? setSylledgeMessages : setBacktestMessages;
+    const setInput = tab === 'SYLLEDGE' ? setSylledgeInput  : setBacktestInput;
+    const system = tab === 'SYLLEDGE'
+      ? `You are SYLLEDGE, an elite AI trading analyst. Trader stats: Win Rate ${stats.winRate}%, Profit Factor ${stats.profitFactor}, Net P&L $${stats.netPnL}, Expectancy $${stats.expectancy}/trade, ${stats.totalTrades} total trades. Strategy: "${strategyProfile.description}". Confluences: "${strategyProfile.confluences}". Risk rules: "${strategyProfile.riskRules}". Playbook: ${playbook.map(s => s.name).join(', ')}. Give precise, data-driven trading feedback.`
+      : `You are a professional trading backtest AI. Strategy: "${backtestForm.strategyDesc}". Confluences: "${backtestForm.confluences}". Asset: ${backtestForm.asset}, range: ${backtestForm.timeRange}, risk: ${backtestForm.riskPer}%, target R:R: ${backtestForm.targetRR}. Provide: max losing/winning streak, optimal SL placement, best entry times, best days, performance projections.`;
+    const updated = [...msgs, { role: 'user', content: input }];
+    setMsgs(updated); setInput(''); setIsAILoading(true);
+    try {
+      const res = await fetch('/api/ai', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messages: updated, system }) });
+      const data = await res.json();
+      setMsgs(p => [...p, { role: 'assistant', content: data.content || data.error || 'No response' }]);
+    } catch (e) { setMsgs(p => [...p, { role: 'assistant', content: 'API error: ' + e.message }]); }
+    finally { setIsAILoading(false); }
+  };
+
+  // ══ CALENDAR RENDERER ══════════════════════════════════════════════════════════
+  const renderCalendar = () => {
+    const y = currentDate.getFullYear(), m = currentDate.getMonth();
+    const days  = new Date(y, m + 1, 0).getDate();
+    const first = new Date(y, m, 1).getDay();
+    const cells = Array.from({ length: first }, (_, i) => <div key={`e${i}`} />);
+    for (let d = 1; d <= days; d++) {
+      const has  = d % 3 === 0;
+      const pnl  = has ? (d % 2 === 0 ? 420 : -150) : 0;
+      const cnt  = has ? (d % 5) + 1 : 0;
+      cells.push(
+        <div key={d} style={{ background: tk.surface, borderColor: tk.border }} className="aspect-square rounded-xl border flex flex-col justify-between p-1.5 md:p-2 group hover:opacity-90 transition-all cursor-pointer relative overflow-hidden">
+          <span style={{ color: tk.textMuted }} className="text-[10px] md:text-[11px] font-black">{d}</span>
+          {has && (
+            <div className="space-y-0.5">
+              <div className={`px-1 py-0.5 rounded-md text-center ${pnl >= 0 ? 'bg-emerald-500/20' : 'bg-rose-500/20'}`}>
+                <p className={`text-[7px] md:text-[9px] font-black ${pnl >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>{pnl >= 0 ? `+$${pnl}` : `-$${Math.abs(pnl)}`}</p>
+              </div>
+              <p style={{ color: tk.textDim }} className="text-[6px] md:text-[7px] text-center">{cnt}T</p>
+            </div>
+          )}
+          <div className={`absolute inset-0 opacity-0 group-hover:opacity-10 transition-opacity pointer-events-none ${pnl > 0 ? 'bg-emerald-500' : pnl < 0 ? 'bg-rose-500' : ''}`} />
+        </div>
+      );
+    }
+    return cells;
+  };
+
+  // ══ RENDER ════════════════════════════════════════════════════════════════════
   return (
     <>
       <style jsx global>{`
-        html, body {
-          overflow-x: hidden;
-          position: relative;
-          max-width: 100%;
-          margin: 0;
-          padding: 0;
+        *, *::before, *::after { box-sizing: border-box; }
+        html, body { overflow-x: hidden; margin: 0; padding: 0; -webkit-font-smoothing: antialiased; }
+        :root { --brand: ${brand}; --brand-glow: ${brand}44; }
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
+        select option { background: #0a0a0a; color: white; }
+        .ai-typing::after { content: '▋'; animation: blink 1s infinite; }
+        @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+        * { -webkit-tap-highlight-color: transparent; }
+        button { touch-action: manipulation; }
+        input, textarea, select { font-size: 16px !important; }
+
+        /* Mobile fixes */
+        @media (max-width: 768px) {
+          .settings-layout    { flex-direction: column !important; }
+          .settings-sidebar   { width: 100% !important; position: static !important; display: flex !important; flex-direction: row !important; overflow-x: auto !important; gap: 4px !important; padding: 8px !important; }
+          .settings-sidebar button { flex-shrink: 0 !important; white-space: nowrap !important; }
+          .settings-content   { padding: 16px !important; }
+          .ai-panel-layout    { display: flex !important; flex-direction: column !important; height: auto !important; }
+          .ai-config-panel    { max-height: 50vh; overflow-y: auto; }
+          .ai-chat-panel      { height: 55vh !important; min-height: 320px; }
+          .table-wrapper      { overflow-x: auto !important; -webkit-overflow-scrolling: touch; }
+          .table-wrapper table { min-width: 560px; }
+          .fab-btn            { bottom: 74px !important; right: 14px !important; width: 52px !important; height: 52px !important; }
+          .modal-wrap         { padding: 0 !important; align-items: flex-end !important; }
+          .modal-inner        { border-radius: 24px 24px 0 0 !important; max-width: 100% !important; width: 100% !important; }
+          .modal-grid         { grid-template-columns: 1fr !important; }
+          header              { height: auto !important; min-height: 56px !important; padding: 10px 14px !important; }
         }
-        :root {
-          --brand-primary: ${appearance.primaryColor};
-          --brand-glow: ${appearance.primaryColor}66; /* Added this line */
+        @media (max-width: 480px) {
+          .kpi-grid   { grid-template-columns: 1fr 1fr !important; }
+          .chart-wrap { height: 200px !important; }
         }
-        .text-brand { color: var(--brand-primary); }
-        .bg-brand { background-color: var(--brand-primary); }
-        .border-brand { border-color: var(--brand-primary); }
-        ..shadow-brand { box-shadow: 0 0 20px var(--brand-glow); }
       `}</style>
-    <div className="min-h-screen w-full bg-[#020408] text-white font-sans selection:bg-brand/30 overflow-x-hidden relative">
-    {/* Neural Background Engine */}
-    <div 
-      className="fixed inset-0 pointer-events-none opacity-20 transition-opacity duration-1000"
-      style={{ 
-        background: `radial-gradient(600px circle at ${mousePos.x}% ${mousePos.y}%, ${theme.primary}25, transparent 80%)` 
-      }}
-    />
-    <div className="fixed inset-0 pointer-events-none bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 mix-blend-overlay" />
 
-    {/* This is the inner flex wrapper that holds the sidebar and main content */}
-    <div className="relative z-10 flex min-h-screen w-full">
-        
-        {/* ADAPTIVE SIDEBAR (Sliver to Expanded) */}
-        <aside 
-  onMouseEnter={() => setIsSidebarExpanded(true)}
-  onMouseLeave={() => setIsSidebarExpanded(false)}
-  className={`hidden md:flex flex-col border-r border-white/5 bg-black/40 backdrop-blur-3xl transition-all duration-500 z-50 fixed left-0 h-full ${
-    isSidebarExpanded ? 'w-80' : 'w-24'
-  }`}
->
-          <div className="flex flex-col h-full py-10 px-6">
-            <div className="flex items-center gap-4 mb-16 overflow-hidden">
-            <div className="min-w-[48px] h-12 rounded-2xl bg-purple-500 flex items-center justify-center shadow-brand">
-                <Zap size={24} className="text-white fill-white" />
-              </div>
-              <div className={`transition-opacity duration-300 ${isSidebarExpanded ? 'opacity-100' : 'opacity-0'}`}>
-                <h1 className="text-xl font-black italic tracking-tighter leading-none">TERMINAL</h1>
-                <p className="text-[7px] font-bold text-purple-500 tracking-[0.4em] mt-1 uppercase">Neural Elite</p>
-              </div>
-            </div>
+      <div style={{ backgroundColor: tk.bg, color: tk.text, minHeight: '100vh' }} className="font-sans overflow-x-hidden relative w-full transition-colors duration-300">
 
-            <nav className="space-y-4 flex-1">
-              {[
-                { id: 'DASHBOARD', icon: <LayoutDashboard size={20}/>, label: 'Dashboard' },
-                { id: 'SYLLEDGE', icon: <Terminal size={20}/>, label: 'Sylledge AI' },
-                { id: 'BACKTEST', icon: <Cpu size={20}/>, label: 'AI Backtesting' },
-                { id: 'PLAYBOOK', icon: <Brain size={20}/>, label: 'Playbook' },
-                { id: 'SETTINGS', icon: <Settings size={20}/>, label: 'User Space' },
-              ].map((item) => (
-                <button
-                  key={item.id}
-                  onClick={() => setActiveTab(item.id)}
-                  className={`w-full flex items-center gap-6 p-4 rounded-2xl transition-all relative group ${
-                    activeTab === item.id ? 'bg-brand/10 text-brand border-l-2 border-brand' : 'text-white/40 hover:text-white'
-                  }`}
-                >
-                  <div className="min-w-[20px]">{item.icon}</div>
-                  <span className={`text-[10px] font-black tracking-[0.2em] uppercase transition-opacity duration-300 ${
-                    isSidebarExpanded ? 'opacity-100' : 'opacity-0 pointer-events-none'
-                  }`}>
-                    {item.label}
-                  </span>
-                </button>
-              ))}
-            </nav>
+        {/* Neural ambient bg */}
+        <div className="fixed inset-0 pointer-events-none" style={{ background: `radial-gradient(600px circle at ${mousePos.x}% ${mousePos.y}%, ${brand}15, transparent 80%)`, zIndex: 0 }} />
 
-            {/* COMMERCIAL_ZONE_SIDEBAR_AD_PLACEHOLDER */}
-            {/* Future monetization/sponsor block goes here */}
-            </div>
-        </aside>
-        {/* MOBILE BOTTOM NAVIGATION */}
-<nav className="flex md:hidden fixed bottom-0 left-0 w-full bg-black/80 backdrop-blur-2xl border-t border-white/10 z-[100] px-6 py-4 justify-around items-center">
-  {[
-    { id: 'DASHBOARD', icon: <LayoutDashboard size={20}/> },
-    { id: 'SYLLEDGE', icon: <Terminal size={20}/> },
-    { id: 'BACKTEST', icon: <Cpu size={20}/> },
-    { id: 'PLAYBOOK', icon: <Brain size={20}/> },
-    { id: 'SETTINGS', icon: <Settings size={20}/> },
-  ].map((item) => (
-    <button
-      key={item.id}
-      onClick={() => setActiveTab(item.id)}
-      className={`p-3 rounded-2xl transition-all ${
-        activeTab === item.id ? 'bg-purple-500/20 text-brand' : 'text-white/40'
-      }`}
-    >
-      {item.icon}
-    </button>
-  ))}
-</nav>
+        <div className="relative flex min-h-screen w-full" style={{ zIndex: 1 }}>
 
-{/* MAIN CONTENT AREA */}
-<main className="flex-1 min-h-screen transition-all duration-500 pl-0 md:pl-24 lg:pl-24">
-  <div className="p-4 md:p-10 pb-32 md:pb-10 max-w-[1600px] mx-auto space-y-10">
-          
-          {/* TOP NAVIGATION / HEADER */}
-          <header className="h-24 border-b border-white/5 flex items-center justify-between px-10 bg-black/20 backdrop-blur-md relative z-20">
-            <div className="flex items-center gap-8">
-              <div>
-                <div className="flex items-center gap-2 mb-1">
-                  <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                  <p className="text-[10px] font-black uppercase tracking-[0.3em] text-white/50">Neural Node Linked</p>
+          {/* ── SIDEBAR (desktop) ─────────────────────────────────────────────── */}
+          <aside onMouseEnter={() => setIsSidebarExpanded(true)} onMouseLeave={() => setIsSidebarExpanded(false)}
+            style={{ backgroundColor: tk.bg, borderColor: tk.border }}
+            className={`hidden md:flex flex-col border-r transition-all duration-500 z-50 fixed left-0 h-full ${isSidebarExpanded ? 'w-64' : 'w-20'}`}>
+            <div className="flex flex-col h-full py-8 px-4">
+              <div className="flex items-center gap-3 mb-12 overflow-hidden px-2">
+                <div className="min-w-[40px] h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: brand }}>
+                  <Zap size={20} className="text-white fill-white" />
                 </div>
-                <h2 className="text-sm font-black uppercase tracking-widest italic">{activeTab}</h2>
-              </div>
-
-              <div className="h-8 w-[1px] bg-white/10" />
-              
-              <div className="flex items-center gap-6">
-                <button 
-                  onClick={() => setIsPrivacyMode(!isPrivacyMode)}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-xl border transition-all ${
-                    isPrivacyMode ? 'bg-purple-500/20 border-purple-500 text-purple-400' : 'bg-white/5 border-white/10 text-white/40'
-                  }`}
-                >
-                  {isPrivacyMode ? <Lock size={14} /> : <Globe size={14} />}
-                  <span className="text-[9px] font-black uppercase tracking-tighter">Ghost Mode</span>
-                </button>
-              </div>
-            </div>
-            <div className="flex items-center gap-6">
-              <div className="hidden xl:flex items-center gap-4 px-6 py-2 bg-white/5 rounded-2xl border border-white/5">
-                <div className="text-right">
-                  <p className="text-[8px] font-bold text-white/20 uppercase tracking-tighter">Latency</p>
-                  <p className="text-[10px] font-black text-purple-500">14ms</p>
+                <div className={`transition-opacity duration-300 whitespace-nowrap ${isSidebarExpanded ? 'opacity-100' : 'opacity-0'}`}>
+                  <h1 className="text-lg font-black italic tracking-tighter">TRADESYLLA</h1>
+                  <p className="text-[7px] font-bold tracking-[0.4em] uppercase" style={{ color: brand }}>Elite Neural</p>
                 </div>
-                <Activity size={16} className="text-purple-500" />
               </div>
-
-              {/* FLOATING ACTION TRIGGER - TOP HEADER VERSION */}
-              <button
-                onClick={() => setIsLogModalOpen(true)}
-                className="group relative flex items-center gap-3 px-8 py-4 bg-white text-black rounded-2xl transition-all hover:scale-105 active:scale-95 shadow-[0_0_30px_rgba(255,255,255,0.2)]"
-              >
-                <Plus size={18} strokeWidth={3} />
-                <span className="text-[10px] font-black uppercase tracking-[0.2em]">New Position</span>
-              </button>
-            
-              <button 
-  onClick={() => setActiveTab('SETTINGS')}
-  className="w-12 h-12 rounded-2xl border border-white/10 bg-gradient-to-br from-white/10 to-transparent p-[1px] hover:border-purple-500/50 transition-all hover:scale-105 active:scale-95 group"
->
-  <div className="w-full h-full rounded-2xl bg-[#020408] flex items-center justify-center overflow-hidden group-hover:bg-purple-500/10 transition-colors">
-     <User size={20} className="text-white/40 group-hover:text-purple-500 transition-colors" />
-  </div>
-</button>
+              <nav className="space-y-1 flex-1">
+                {[
+                  { id: 'DASHBOARD',    icon: <LayoutDashboard size={18}/>, label: 'Dashboard'  },
+                  { id: 'SYLLEDGE',     icon: <Brain size={18}/>,           label: 'Sylledge AI' },
+                  { id: 'BACKTEST',     icon: <Cpu size={18}/>,             label: 'AI Backtest' },
+                  { id: 'PLAYBOOK',     icon: <BookOpen size={18}/>,        label: 'Playbook'    },
+                  { id: 'TRADE_LOG',    icon: <Terminal size={18}/>,        label: 'Trade Log'   },
+                  { id: 'SETTINGS',     icon: <Settings size={18}/>,        label: 'Settings'    },
+                ].map(item => (
+                  <button key={item.id} onClick={() => setActiveTab(item.id)}
+                    style={{ color: activeTab === item.id ? brand : tk.textMuted, backgroundColor: activeTab === item.id ? `${brand}15` : 'transparent', borderLeft: activeTab === item.id ? `2px solid ${brand}` : '2px solid transparent' }}
+                    className="w-full flex items-center gap-4 p-3 rounded-xl transition-all">
+                    <div className="min-w-[18px]">{item.icon}</div>
+                    <span className={`text-[9px] font-black tracking-widest uppercase whitespace-nowrap transition-opacity duration-300 ${isSidebarExpanded ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>{item.label}</span>
+                  </button>
+                ))}
+              </nav>
             </div>
-          </header>
+          </aside>
 
-          {/* DYNAMIC VIEWPORT */}
-          <div className="flex-1 p-4 md:p-10">
-            
-              
+          {/* ── MOBILE BOTTOM NAV ─────────────────────────────────────────────── */}
+          <nav style={{ backgroundColor: tk.bg, borderColor: tk.border }} className="flex md:hidden fixed bottom-0 left-0 w-full border-t z-[100] px-2 py-2 justify-around items-center">
+            {[
+              { id: 'DASHBOARD', icon: <LayoutDashboard size={20}/> },
+              { id: 'SYLLEDGE',  icon: <Brain size={20}/> },
+              { id: 'BACKTEST',  icon: <Cpu size={20}/> },
+              { id: 'PLAYBOOK',  icon: <BookOpen size={20}/> },
+              { id: 'SETTINGS',  icon: <Settings size={20}/> },
+            ].map(item => (
+              <button key={item.id} onClick={() => setActiveTab(item.id)}
+                style={{ color: activeTab === item.id ? brand : tk.textMuted, backgroundColor: activeTab === item.id ? `${brand}15` : 'transparent' }}
+                className="p-3 rounded-xl transition-all">{item.icon}</button>
+            ))}
+          </nav>
+
+          {/* ── MAIN CONTENT ──────────────────────────────────────────────────── */}
+          <main className="flex-1 min-h-screen pl-0 md:pl-20 transition-all duration-500">
+            <div className="p-4 md:p-8 pb-28 md:pb-10 max-w-[1600px] mx-auto space-y-6">
+
+              {/* Header — no New Position button here */}
+              <header style={{ borderColor: tk.border, backgroundColor: tk.bg + 'dd' }}
+                className="border-b flex items-center justify-between px-4 md:px-6 py-3 backdrop-blur-md sticky top-0 z-20 gap-3">
+                <div className="flex items-center gap-4 min-w-0">
+                  <div>
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                      <p style={{ color: tk.textDim }} className="text-[8px] font-black uppercase tracking-widest hidden sm:block">Neural Node Linked</p>
+                    </div>
+                    <h2 style={{ color: tk.text }} className="text-xs font-black uppercase tracking-widest italic">{activeTab.replace('_', ' ')}</h2>
+                  </div>
+                  <button onClick={() => setIsPrivacyMode(p => !p)}
+                    style={{ borderColor: isPrivacyMode ? brand : tk.border, color: isPrivacyMode ? brand : tk.textMuted }}
+                    className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg border transition-all text-[8px] font-black uppercase">
+                    {isPrivacyMode ? <EyeOff size={12}/> : <Eye size={12}/>} Ghost
+                  </button>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div style={{ background: tk.surface, borderColor: tk.border }} className="hidden xl:flex items-center gap-2 px-3 py-2 rounded-xl border">
+                    <p style={{ color: tk.textDim }} className="text-[7px] uppercase font-bold">Latency</p>
+                    <p style={{ color: brand }} className="text-[10px] font-black">14ms</p>
+                    <Activity size={12} style={{ color: brand }}/>
+                  </div>
+                  <button onClick={() => setActiveTab('SETTINGS')} style={{ borderColor: tk.border }} className="w-9 h-9 rounded-xl border flex items-center justify-center hover:border-brand transition-all">
+                    <User size={15} style={{ color: tk.textMuted }}/>
+                  </button>
+                </div>
+              </header>
+
+              {/* ╔══════════════════════════════════════════════════╗
+                  ║  DASHBOARD                                       ║
+                  ╚══════════════════════════════════════════════════╝ */}
               {activeTab === 'DASHBOARD' && (
-                <>
-                  {/* KPI GRID */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
+                <div className="space-y-6">
+
+                  {/* KPI cards */}
+                  <div className="kpi-grid grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3 md:gap-4">
                     {[
-                      { label: 'Neural Alpha', value: sessionMetrics.alpha + '%', sub: '+2.4% vs Bench', icon: <Zap size={16}/>, color: 'text-purple-500' },
-                      { label: 'Session PnL', value: '$' + sessionMetrics.pnl.toLocaleString(), sub: 'Today', icon: <TrendingUp size={16}/>, color: 'text-emerald-500' },
-                      { label: 'Win Probability', value: sessionMetrics.winRate + '%', sub: 'Calculated', icon: <Target size={16}/>, color: 'text-blue-500' },
-                      { label: 'Max Drawdown', value: sessionMetrics.drawdown + '%', sub: 'Last 30d', icon: <Activity size={16}/>, color: 'text-rose-500' }
-                    ].map((card, i) => (
-                      <div key={i} className="group relative bg-white/5 border border-white/5 p-8 rounded-[32px] overflow-hidden hover:border-white/10 transition-all duration-500">
-                        <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:opacity-20 transition-opacity">
-                          {card.icon}
+                      { label: 'Net P&L',      val: `$${parseFloat(stats.netPnL).toLocaleString()}`,   color: parseFloat(stats.netPnL) >= 0 ? '#10b981' : '#ef4444', sub: `${stats.totalTrades} trades` },
+                      { label: 'Trade Win %',  val: `${stats.winRate}%`,   gauge: { v: parseFloat(stats.winRate),                                        c: '#10b981' }, sub: null },
+                      { label: 'Profit Factor',val: stats.profitFactor,     gauge: { v: Math.min(parseFloat(stats.profitFactor)||0, 3)/3*100,            c: parseFloat(stats.profitFactor) >= 1.5 ? '#10b981' : '#f59e0b' }, sub: null },
+                      { label: 'Day Win %',    val: `${stats.winRate}%`,   gauge: { v: parseFloat(stats.winRate),                                        c: '#3b82f6' }, sub: null },
+                      { label: 'Avg Win/Loss', val: `$${stats.avgWin}`,   winLoss: true },
+                    ].map((c, i) => (
+                      <div key={i} style={{ background: tk.surface, borderColor: tk.border }} className="p-4 md:p-5 rounded-2xl border hover:border-brand/30 transition-all">
+                        <p style={{ color: tk.textMuted }} className="text-[7px] font-black uppercase tracking-widest mb-2">{c.label}</p>
+                        <div className="flex items-end justify-between gap-2">
+                          <div className="min-w-0">
+                            <p style={{ color: c.color || tk.text, filter: isPrivacyMode ? 'blur(8px)' : 'none' }} className="text-xl md:text-2xl font-black italic tracking-tighter truncate">{c.val}</p>
+                            {c.sub && <p style={{ color: tk.textDim }} className="text-[7px] font-bold uppercase mt-1">{c.sub}</p>}
+                          </div>
+                          {c.gauge && <GaugeChart value={c.gauge.v} color={c.gauge.c} size={64}/>}
                         </div>
-                        <div className={`text-[10px] font-black uppercase tracking-[0.2em] mb-4 ${card.color}`}>
-                          {card.label}
-                        </div>
-                        <div className={`text-4xl font-black italic tracking-tighter mb-2 ${isPrivacyMode ? 'blur-md' : ''}`}>
-                          {card.value}
-                        </div>
-                        <p className="text-[10px] text-white/30 font-bold uppercase tracking-widest">{card.sub}</p>
+                        {c.winLoss && (
+                          <div className="mt-2">
+                            <div className="flex justify-between">
+                              <span className="text-[7px] text-emerald-400 font-black">+${stats.avgWin}</span>
+                              <span className="text-[7px] text-rose-400 font-black">-${stats.avgLoss}</span>
+                            </div>
+                            <WinLossBar avgWin={parseFloat(stats.avgWin)} avgLoss={parseFloat(stats.avgLoss)}/>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
 
-                  {/* DATA VISUALIZATION ROW */}
-                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-  <div className="lg:col-span-2 bg-white/5 border border-white/5 rounded-[32px] p-4 md:p-8 h-[350px] md:h-[450px] relative overflow-hidden">
-                      <div className="flex items-center justify-between mb-8">
-                      <div className="flex items-center gap-4">
-  <div className="w-10 h-10 rounded-xl bg-purple-500/10 flex items-center justify-center text-purple-500">
-    <TrendingUp size={20} />
-  </div>
-  <div>
-    <h3 className="text-xs font-black uppercase tracking-[0.3em]">Equity Growth Neural Projection</h3>
-    
-    {/* STATUS INDICATOR ADDED HERE */}
-    <div className="flex items-center gap-2 mt-1">
-      <div className={`w-1.5 h-1.5 rounded-full ${isSyncing ? 'bg-yellow-500 animate-pulse' : 'bg-green-500'}`} />
-      <span className="text-[9px] text-white/40 uppercase tracking-widest font-bold">
-        {isSyncing ? 'Syncing MT5...' : 'Live Bridge Active'}
-      </span>
-    </div>
-  </div>
-</div>
-
-<div className="flex gap-2">
-  {['1D', '1W', '1M', 'ALL'].map(tf => (
-    <button key={tf} className="px-4 py-2 rounded-lg bg-white/5 text-[9px] font-black hover:bg-white/10 transition-all">{tf}</button>
-  ))}
-</div>
-                        
+                  {/* Secondary KPIs */}
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    {[
+                      { label: 'Expectancy',     val: `$${stats.expectancy}`,   color: parseFloat(stats.expectancy) > 0 ? '#10b981' : '#ef4444', icon: <Target size={14}/> },
+                      { label: 'Max Drawdown',   val: `$${stats.maxDrawdown}`,  color: '#ef4444', icon: <AlertTriangle size={14}/> },
+                      { label: 'Best Day',       val: `+$${stats.bestDay}`,     color: '#10b981', icon: <Award size={14}/> },
+                      { label: 'Streak',         val: `${stats.currentStreak > 0 ? '+' : ''}${stats.currentStreak} ${stats.currentStreak > 0 ? '🔥' : '❄️'}`, color: stats.currentStreak > 0 ? '#10b981' : '#ef4444', icon: <Activity size={14}/> },
+                    ].map((c, i) => (
+                      <div key={i} style={{ background: tk.surface, borderColor: tk.border }} className="p-3 md:p-4 rounded-2xl border flex items-center gap-3">
+                        <div style={{ backgroundColor: `${c.color}20`, color: c.color }} className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0">{c.icon}</div>
+                        <div className="min-w-0">
+                          <p style={{ color: tk.textDim }} className="text-[7px] font-bold uppercase tracking-widest">{c.label}</p>
+                          <p style={{ color: c.color, filter: isPrivacyMode ? 'blur(8px)' : 'none' }} className="text-base md:text-lg font-black truncate">{c.val}</p>
+                        </div>
                       </div>
-                      <div className={`w-full h-[300px] md:h-full pb-16 ${isPrivacyMode ? 'blur-2xl' : ''}`}>
-                      <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={chartData}>
+                    ))}
+                  </div>
+
+                  {/* Charts row */}
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
+                    <div style={{ background: tk.surface, borderColor: tk.border }} className="lg:col-span-2 rounded-2xl border p-4 md:p-6">
+                      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+                        <div>
+                          <h3 style={{ color: tk.text }} className="text-[10px] font-black uppercase tracking-widest">Daily Net Cumulative P&L</h3>
+                          <div className="flex items-center gap-1.5 mt-1">
+                            <div className={`w-1.5 h-1.5 rounded-full ${isSyncing ? 'bg-yellow-500 animate-pulse' : 'bg-emerald-500'}`}/>
+                            <p style={{ color: tk.textDim }} className="text-[8px] font-bold uppercase">{isSyncing ? 'Syncing...' : 'Live'}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button onClick={syncLiveMT5} disabled={isSyncing} style={{ borderColor: tk.border, color: tk.textMuted }} className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border text-[8px] font-black uppercase hover:border-brand transition-all">
+                            <RefreshCw size={10} className={isSyncing ? 'animate-spin' : ''}/> MT5
+                          </button>
+                          {['1W','1M','ALL'].map(tf => <button key={tf} style={{ color: tk.textDim, background: tk.input }} className="px-2 py-1 rounded-lg text-[8px] font-black hover:opacity-70 transition-all">{tf}</button>)}
+                        </div>
+                      </div>
+                      <div className="chart-wrap" style={{ height: 260, filter: isPrivacyMode ? 'blur(12px)' : 'none' }}>
+                        <ResponsiveContainer width="100%" height="100%">
+                          <AreaChart data={cumulativePnL}>
                             <defs>
-                              <linearGradient id="colorVal" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="5%" stopColor={theme.primary} stopOpacity={0.3}/>
-                                <stop offset="95%" stopColor={theme.primary} stopOpacity={0}/>
+                              <linearGradient id="cumGrad" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="5%" stopColor={brand} stopOpacity={0.35}/>
+                                <stop offset="95%" stopColor={brand} stopOpacity={0}/>
                               </linearGradient>
                             </defs>
-                            <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{fill: '#444', fontSize: 10}} dy={10} />
-                            <Tooltip contentStyle={{backgroundColor: '#000', border: 'none', borderRadius: '12px', fontSize: '10px'}} />
-                            <Area type="monotone" dataKey="val" stroke={theme.primary} strokeWidth={4} fillOpacity={1} fill="url(#colorVal)" />
+                            <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: tk.textDim, fontSize: 9 }} dy={6}/>
+                            <YAxis axisLine={false} tickLine={false} tick={{ fill: tk.textDim, fontSize: 9 }}/>
+                            <Tooltip contentStyle={{ backgroundColor: tk.bg, border: `1px solid ${tk.border}`, borderRadius: 12, fontSize: 10, color: tk.text }}/>
+                            <Area type="monotone" dataKey="cumulative" stroke={brand} strokeWidth={3} fill="url(#cumGrad)"/>
                           </AreaChart>
                         </ResponsiveContainer>
                       </div>
                     </div>
 
-                    <div className="bg-white/5 border border-white/5 rounded-[32px] p-8 flex flex-col items-center justify-center relative">
-                      <h3 className="text-xs font-black uppercase tracking-[0.3em] mb-8 text-center">Neural Skill Distribution</h3>
-                      <ResponsiveContainer width="100%" height={280}>
-                      <RadarChart cx="50%" cy="50%" outerRadius="80%" data={radarData}>
+                    <div style={{ background: tk.surface, borderColor: tk.border }} className="rounded-2xl border p-4 md:p-6">
+                      <h3 style={{ color: tk.text }} className="text-[10px] font-black uppercase tracking-widest mb-4">Net Daily P&L</h3>
+                      <div style={{ height: 260, filter: isPrivacyMode ? 'blur(12px)' : 'none' }}>
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={cumulativePnL} barSize={10}>
+                            <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: tk.textDim, fontSize: 8 }} dy={4}/>
+                            <YAxis axisLine={false} tickLine={false} tick={{ fill: tk.textDim, fontSize: 8 }}/>
+                            <Tooltip contentStyle={{ backgroundColor: tk.bg, border: `1px solid ${tk.border}`, borderRadius: 12, fontSize: 10, color: tk.text }}/>
+                            <Bar dataKey="daily" radius={[3, 3, 0, 0]}>
+                              {cumulativePnL.map((e, i) => <Cell key={i} fill={e.daily >= 0 ? '#10b981' : '#ef4444'}/>)}
+                            </Bar>
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
+                  </div>
 
-<PolarGrid stroke="#ffffff10" />
-                          <PolarAngleAxis dataKey="subject" tick={{fill: '#ffffff40', fontSize: 8}} />
-                          <Radar name="Skills" dataKey="A" stroke={theme.primary} fill={theme.primary} fillOpacity={0.5} />
+                  {/* Radar + Calendar + Weekly */}
+                  <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 md:gap-6">
+                    <div style={{ background: tk.surface, borderColor: tk.border }} className="rounded-2xl border p-4 md:p-6">
+                      <div className="flex items-center justify-between mb-2">
+                        <h3 style={{ color: tk.text }} className="text-[10px] font-black uppercase tracking-widest">Neural Score</h3>
+                        <span style={{ backgroundColor: `${brand}20`, color: brand }} className="px-2 py-0.5 rounded-full text-[7px] font-black">BETA</span>
+                      </div>
+                      <ResponsiveContainer width="100%" height={170}>
+                        <RadarChart cx="50%" cy="50%" outerRadius="70%" data={radarData}>
+                          <PolarGrid stroke={tk.border}/>
+                          <PolarAngleAxis dataKey="subject" tick={{ fill: tk.textDim, fontSize: 7 }}/>
+                          <Radar dataKey="A" stroke={brand} fill={brand} fillOpacity={0.4}/>
                         </RadarChart>
                       </ResponsiveContainer>
-                      <div className="mt-8 grid grid-cols-2 gap-4 w-full">
-                        <div className="p-4 bg-white/5 rounded-2xl text-center">
-                          <p className="text-[8px] font-bold text-white/30 uppercase mb-1">Consistency</p>
-                          <p className="text-sm font-black text-emerald-500">A+</p>
+                      <p style={{ color: tk.textMuted }} className="text-center text-[9px] font-bold mt-2">
+                        Score: <span style={{ color: brand }} className="text-base font-black">{Math.round(parseFloat(stats.winRate) * 0.8 + (parseFloat(stats.profitFactor) || 0) * 10)}</span>
+                      </p>
+                    </div>
+
+                    <div style={{ background: tk.surface, borderColor: tk.border }} className="lg:col-span-2 rounded-2xl border p-4 md:p-6">
+                      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+                        <h3 style={{ color: tk.text }} className="text-[10px] font-black uppercase tracking-widest">Execution Matrix</h3>
+                        <div style={{ background: tk.input, borderColor: tk.border }} className="flex items-center gap-2 px-3 py-1.5 rounded-xl border">
+                          <button onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1))} style={{ color: tk.textMuted }} className="hover:text-brand transition-colors"><ChevronRight size={13} className="rotate-180"/></button>
+                          <span style={{ color: tk.text }} className="text-[9px] font-black uppercase tracking-wider min-w-[80px] text-center">{currentDate.toLocaleString('default', { month: 'short', year: 'numeric' })}</span>
+                          <button onClick={() => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1))} style={{ color: tk.textMuted }} className="hover:text-brand transition-colors"><ChevronRight size={13}/></button>
                         </div>
-                        <div className="p-4 bg-white/5 rounded-2xl text-center">
-                          <p className="text-[8px] font-bold text-white/30 uppercase mb-1">Recovery</p>
-                          <p className="text-sm font-black text-purple-500">S-Tier</p>
-                        </div>
+                      </div>
+                      <div className="grid grid-cols-7 gap-1 mb-1">
+                        {['Su','Mo','Tu','We','Th','Fr','Sa'].map(d => <div key={d} style={{ color: tk.textDim }} className="text-center text-[7px] font-black uppercase py-1">{d}</div>)}
+                      </div>
+                      <div className="grid grid-cols-7 gap-1">{renderCalendar()}</div>
+                    </div>
+
+                    <div style={{ background: tk.surface, borderColor: tk.border }} className="rounded-2xl border p-4 md:p-6">
+                      <h3 style={{ color: tk.text }} className="text-[10px] font-black uppercase tracking-widest mb-4">Weekly Summary</h3>
+                      <div className="space-y-2">
+                        {weeklyStats.map((w, i) => (
+                          <div key={i} style={{ borderColor: tk.border }} className="flex items-center justify-between py-2 border-b last:border-0">
+                            <div>
+                              <p style={{ color: tk.text }} className="text-[10px] font-black">{w.label}</p>
+                              <p style={{ color: tk.textDim }} className="text-[8px]">{w.days} days</p>
+                            </div>
+                            <p style={{ color: w.pnl >= 0 ? '#10b981' : '#ef4444', filter: isPrivacyMode ? 'blur(8px)' : 'none' }} className="text-sm font-black">{w.pnl >= 0 ? '+' : ''}${w.pnl}</p>
+                          </div>
+                        ))}
+                      </div>
+                      <div style={{ background: `${brand}10`, borderColor: `${brand}30` }} className="mt-3 p-3 rounded-xl border">
+                        <p style={{ color: brand }} className="text-[7px] font-black uppercase tracking-widest">Neural Insight</p>
+                        <p style={{ color: tk.textMuted }} className="text-[9px] mt-1 leading-relaxed">Win rate peaks Tue–Thu. Avoid Monday entries.</p>
                       </div>
                     </div>
                   </div>
 
-                  {/* COMMERCIAL_ZONE_DASHBOARD_MIDDLE_PLACEHOLDER */}
-                  {/* Future monetization banner or premium insights carousel goes here */}
-
-                  <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-                    {/* UPGRADED EXECUTION MATRIX */}
-                    <div className="col-span-1 lg:col-span-3 bg-white/5 border border-white/5 rounded-[32px] p-4 md:p-8">
-                      <div className="flex items-center justify-between mb-8">
-                        <div className="flex items-center gap-4">
-                          <Calendar size={20} className="text-purple-500" />
-                          <h3 className="text-xs font-black uppercase tracking-[0.3em]">Execution Matrix</h3>
-                        </div>
-                        
-                        {/* MONTH NAVIGATION */}
-                        <div className="flex items-center gap-4 bg-white/5 rounded-xl px-4 py-2 border border-white/5">
-                          <button 
-                            onClick={() => setCurrentDate(new Date(currentDate.setMonth(currentDate.getMonth() - 1)))}
-                            className="hover:text-purple-500 transition-colors"
-                          >
-                            <ChevronRight size={16} className="rotate-180" />
-                          </button>
-                          <span className="text-[10px] font-black uppercase tracking-widest min-w-[100px] text-center">
-                            {currentDate.toLocaleString('default', { month: 'long', year: 'numeric' })}
-                          </span>
-                          <button 
-                            onClick={() => setCurrentDate(new Date(currentDate.setMonth(currentDate.getMonth() + 1)))}
-                            className="hover:text-purple-500 transition-colors"
-                          >
-                            <ChevronRight size={16} />
-                          </button>
-                          </div>
-                      </div>
-
-                      {/* CALENDAR GRID */}
-                      <div className="grid grid-cols-7 gap-3">
-                      {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
-  <div key={day} className="text-center text-[10px] font-black text-white/60 uppercase tracking-[0.2em] mb-4 bg-white/5 py-2 rounded-lg border border-white/5">
-    {day}
-  </div>
-))}
-                        {Array.from({ length: new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0).getDate() }).map((_, i) => {
-  const day = i + 1;
-  const hasTrades = day % 3 === 0; 
-  const dailyPnL = hasTrades ? (day % 2 === 0 ? 420 : -150) : 0;
-  const tradeCount = hasTrades ? Math.floor(Math.random() * 5) + 1 : 0;
-
-  return (
-    <div key={i} className="aspect-square rounded-2xl bg-white/5 border border-white/10 p-3 flex flex-col justify-between group hover:border-purple-500/50 transition-all cursor-pointer relative overflow-hidden shadow-inner">
-      {/* Day Number - Brighter on hover */}
-      <span className="text-[11px] font-black text-white/40 group-hover:text-white transition-colors">
-        {day}
-      </span>
-      
-      {hasTrades && (
-        <div className="space-y-1.5 relative z-10">
-          {/* P&L Badge */}
-          <div className={`px-2 py-1 rounded-lg flex items-center justify-center ${dailyPnL >= 0 ? 'bg-emerald-500/20' : 'bg-rose-500/20'}`}>
-             <p className={`text-[10px] font-black tracking-tighter ${dailyPnL >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-               {dailyPnL >= 0 ? `+$${dailyPnL}` : `-$${Math.abs(dailyPnL)}`}
-             </p>
-          </div>
-
-          {/* Trade Count Badge */}
-          <div className="flex items-center gap-1.5 bg-white/5 rounded-md px-1.5 py-0.5 w-fit">
-             <div className={`w-1.5 h-1.5 rounded-full animate-pulse ${dailyPnL >= 0 ? 'bg-emerald-500' : 'bg-rose-500'}`} />
-             <span className="text-[8px] font-black text-white uppercase tracking-tighter">
-               {tradeCount} Trades
-             </span>
-          </div>
-        </div>
-      )}
-
-      {/* Hover Glow Refined */}
-      <div className={`absolute inset-0 opacity-0 group-hover:opacity-20 transition-opacity pointer-events-none ${dailyPnL >= 0 ? 'bg-emerald-500' : 'bg-rose-500'}`} />
-    </div>
-  );
-})}
-                      </div>
+                  {/* Recent trades */}
+                  <div style={{ background: tk.surface, borderColor: tk.border }} className="rounded-2xl border overflow-hidden">
+                    <div style={{ borderColor: tk.border }} className="flex items-center justify-between p-4 md:p-5 border-b">
+                      <h3 style={{ color: tk.text }} className="text-[10px] font-black uppercase tracking-widest">Recent Trades</h3>
+                      <button onClick={() => setActiveTab('TRADE_LOG')} style={{ color: brand }} className="text-[8px] font-black uppercase hover:opacity-70 transition-all">View All →</button>
                     </div>
-
-                    {/* NEURAL INSIGHTS */}
-                    <div className="bg-white/5 border border-white/5 rounded-[32px] p-8">
-                      <h3 className="text-xs font-black uppercase tracking-[0.3em] mb-6">Neural Insights</h3>
-                      <div className="space-y-4">
-                        <div className="p-4 rounded-2xl bg-purple-500/10 border border-purple-500/20">
-                           <p className="text-[10px] leading-relaxed text-purple-200">System detects high win-rate during London Open. Consider scaling size by 1.2x.</p>
-                        </div>
-                        <div className="p-4 rounded-2xl bg-white/5 border border-white/5">
-                           <p className="text-[10px] leading-relaxed text-white/40">Risk of overtrading detected in mid-session. Maintain discipline.</p>
-                        </div>
-                      </div>
+                    <div className="table-wrapper">
+                      <table className="w-full">
+                        <thead>
+                          <tr style={{ background: tk.input, borderColor: tk.border }} className="border-b">
+                            {['Date','Asset','Dir','Grade','Strategy','P&L'].map(h => (
+                              <th key={h} style={{ color: tk.textDim }} className="px-4 py-3 text-left text-[8px] font-black uppercase tracking-widest">{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {tradeHistory.length === 0
+                            ? <tr><td colSpan={6} style={{ color: tk.textDim }} className="px-4 py-10 text-center text-[9px] font-bold uppercase">No trades yet — use the + button below.</td></tr>
+                            : tradeHistory.slice(0, 8).map((t, i) => (
+                              <tr key={i} style={{ borderColor: tk.border }} className="border-b last:border-0">
+                                <td style={{ color: tk.textMuted }} className="px-4 py-3 text-[9px]">{t.date}</td>
+                                <td style={{ color: tk.text }} className="px-4 py-3 text-[9px] font-black">{t.asset}</td>
+                                <td className="px-4 py-3"><span className={`px-2 py-0.5 rounded-full text-[7px] font-black ${t.direction === 'LONG' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'}`}>{t.direction}</span></td>
+                                <td className="px-4 py-3"><span style={{ backgroundColor: `${brand}20`, color: brand }} className="px-2 py-0.5 rounded-full text-[7px] font-black">{t.grade}</span></td>
+                                <td style={{ color: tk.textMuted }} className="px-4 py-3 text-[9px]">{t.strategy}</td>
+                                <td style={{ color: parseFloat(t.pnl) >= 0 ? '#10b981' : '#ef4444', filter: isPrivacyMode ? 'blur(8px)' : 'none' }} className="px-4 py-3 text-[9px] font-black">{parseFloat(t.pnl) >= 0 ? '+' : ''}${t.pnl}</td>
+                              </tr>
+                            ))}
+                        </tbody>
+                      </table>
                     </div>
-                  </div> {/* Closes the Grid containing Calendar + Insights */}
-                </>
+                  </div>
+                </div>
               )}
+
+              {/* ╔══════════════════════════════════════════════════╗
+                  ║  SYLLEDGE AI                                     ║
+                  ╚══════════════════════════════════════════════════╝ */}
               {activeTab === 'SYLLEDGE' && (
-  <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
-    <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6">
-      <div>
-        <h3 className="text-2xl font-black italic tracking-tighter">SYLLEDGE DATA MINE</h3>
-        <p className="text-[10px] font-bold text-white/30 uppercase tracking-[0.4em]">Proprietary Execution Log</p>
-      </div>
-
-      {/* DYNAMIC FILTER BAR */}
-      <div className="flex flex-wrap gap-4 items-center bg-white/5 p-2 rounded-[24px] border border-white/5">
-        <div className="flex flex-col px-4">
-          <label className="text-[7px] font-black uppercase text-purple-500 mb-1">Asset</label>
-          <select 
-            value={filters.asset}
-            onChange={(e) => setFilters({...filters, asset: e.target.value})}
-            className="bg-transparent text-[10px] font-black uppercase outline-none cursor-pointer"
-          >
-            <option value="ALL">All Assets</option>
-            <option value="XAUUSD">XAUUSD</option>
-            <option value="GER30">GER30</option>
-            <option value="NAS100">NAS100</option>
-          </select>
-        </div>
-        
-        <div className="w-[1px] h-8 bg-white/10" />
-
-        <div className="flex flex-col px-4">
-          <label className="text-[7px] font-black uppercase text-purple-500 mb-1">Strategy</label>
-          <select 
-            value={filters.strategy}
-            onChange={(e) => setFilters({...filters, strategy: e.target.value})}
-            className="bg-transparent text-[10px] font-black uppercase outline-none cursor-pointer"
-          >
-            <option value="ALL">All Plays</option>
-            <option value="SILVER_BULLET">Silver Bullet</option>
-            <option value="LIQUIDITY">Liquidity Grab</option>
-          </select>
-        </div>
-
-        <div className="w-[1px] h-8 bg-white/10" />
-
-        <div className="flex flex-col px-4">
-          <label className="text-[7px] font-black uppercase text-purple-500 mb-1">Direction</label>
-          <select 
-            value={filters.direction}
-            onChange={(e) => setFilters({...filters, direction: e.target.value})}
-            className="bg-transparent text-[10px] font-black uppercase outline-none cursor-pointer"
-          >
-            <option value="ALL">Overall</option>
-            <option value="LONG">Longs Only</option>
-            <option value="SHORT">Shorts Only</option>
-          </select>
-        </div>
-      </div>
-
-      <div className="flex gap-4">
-      <button 
-  onClick={syncLiveMT5} // Now triggers the live API fetch
-  className="px-6 py-3 bg-purple-500 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-purple-600 transition-all shadow-lg shadow-purple-500/20 flex items-center gap-2"
->
-  <Database size={14} /> {isSyncing ? 'Linking...' : 'Sync MT5'}
-</button>
-      </div>
-    </div>
-
-    {/* SUB-VISUALIZATION: MINI KPI CARDS */}
-{/* Update this block in your SYLLEDGE tab */}
-<div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-  {[
-    { label: 'Win Probability', val: `${stats.winRate}%`, sub: `+${stats.totalTrades} SAMPLES` },
-    { label: 'Profit Factor', val: stats.profitFactor, sub: 'LIVE DATA' },
-    { label: 'Avg RR', val: '1:3.2', sub: 'Calculated' },
-    { label: 'Expectancy', val: '$420', sub: 'Per Trade' }
-  ].map((stat, i) => (
-    <div key={i} className="p-5 bg-white/5 border border-white/5 rounded-2xl">
-      <p className="text-[7px] font-black text-purple-500 uppercase tracking-widest mb-1">{stat.label}</p>
-      <p className="text-xl font-black italic tracking-tighter">{stat.val}</p>
-      <p className="text-[8px] font-bold text-white/20 uppercase mt-1">{stat.sub}</p>
-    </div>
-  ))}
-</div>
-
-    {/* TABLE SECTION */}
-    <div className="bg-white/5 border border-white/5 rounded-[32px] overflow-hidden">
-      <table className="w-full text-left border-collapse">
-        <thead>
-          <tr className="border-b border-white/5 bg-white/5">
-            {['Asset', 'Type', 'Entry', 'Size', 'PnL', 'Status', 'Insights'].map((head) => (
-              <th key={head} className="p-6 text-[9px] font-black uppercase tracking-[0.2em] text-white/40">{head}</th>
-            ))}
-          </tr>
-        </thead>
-        {/* Table Body would go here */}
-      </table>
-    </div>
-  </div>
-)}
-              {activeTab === 'BACKTEST' && (
-                <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
-                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                    <div className="lg:col-span-1 space-y-6">
-                      <div className="bg-white/5 border border-white/5 rounded-[32px] p-8">
-                        <h3 className="text-xs font-black uppercase tracking-[0.3em] mb-8">Simulation Engine</h3>
-                        <div className="space-y-6">
-                          <div>
-                            <label className="text-[8px] font-black uppercase text-white/30 tracking-widest block mb-3">Strategy Logic</label>
-                            <select className="w-full bg-black/40 border border-white/10 rounded-xl p-4 text-[10px] font-bold outline-none focus:border-purple-500 transition-all">
-                              <option>Mean Reversion v4.2</option>
-                              <option>Liquidity Sweep Alpha</option>
-                              <option>Neural Trend Follower</option>
-                            </select>
-                          </div>
-                          <div className="grid grid-cols-2 gap-4">
-                            <div>
-                              <label className="text-[8px] font-black uppercase text-white/30 tracking-widest block mb-3">Sample Size</label>
-                              <input type="text" defaultValue="500 Trades" className="w-full bg-black/40 border border-white/10 rounded-xl p-4 text-[10px] font-bold outline-none focus:border-purple-500 transition-all" />
-                            </div>
-                            <div>
-                              <label className="text-[8px] font-black uppercase text-white/30 tracking-widest block mb-3">Risk Per Op</label>
-                              <input type="text" defaultValue="1.5%" className="w-full bg-black/40 border border-white/10 rounded-xl p-4 text-[10px] font-bold outline-none focus:border-purple-500 transition-all" />
-                            </div>
-                          </div>
-                          <button className="w-full py-4 bg-purple-500 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] shadow-lg shadow-purple-500/20 hover:scale-[1.02] active:scale-95 transition-all">
-                            Run Simulation
-                          </button>
-                        </div>
+                <div className="ai-panel-layout grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6" style={{ minHeight: 560 }}>
+                  {/* Config panel */}
+                  <div className="ai-config-panel space-y-4 overflow-y-auto">
+                    <div style={{ background: tk.surface, borderColor: tk.border }} className="rounded-2xl border p-4 md:p-5">
+                      <div className="flex items-center gap-3 mb-4">
+                        <div style={{ backgroundColor: `${brand}20`, color: brand }} className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"><Brain size={16}/></div>
+                        <h3 style={{ color: tk.text }} className="text-[10px] font-black uppercase tracking-widest">Strategy Profile</h3>
                       </div>
-
-                      <div className="bg-gradient-to-br from-purple-600/20 to-transparent border border-purple-500/20 rounded-[32px] p-8">
-                         <div className="flex items-center gap-3 mb-4">
-                            <Brain size={18} className="text-purple-400" />
-                            <h4 className="text-[10px] font-black uppercase tracking-widest">Neural Projection</h4>
-                         </div>
-                         <p className="text-[10px] text-purple-200/60 leading-relaxed">Based on current volatility, this strategy has a 68% probability of maintaining its Sharpe ratio over the next 100 iterations.</p>
+                      <div className="space-y-3">
+                        {[
+                          { label: 'Your Trading Strategy', key: 'description', ph: 'e.g. I trade ICT concepts — Silver Bullet, FVG fills...', rows: 4 },
+                          { label: 'Required Confluences',  key: 'confluences',  ph: 'e.g. FVG + Liquidity sweep + MSS...',                  rows: 3 },
+                          { label: 'Risk Rules',            key: 'riskRules',   ph: 'e.g. Max 1% risk, min 1:3 RR...',                       rows: 2 },
+                        ].map(f => (
+                          <div key={f.key}>
+                            <label style={{ color: tk.textMuted }} className="text-[7px] font-black uppercase tracking-widest block mb-1.5">{f.label}</label>
+                            <textarea rows={f.rows} value={strategyProfile[f.key]} onChange={e => setStrategyProfile(p => ({ ...p, [f.key]: e.target.value }))} placeholder={f.ph}
+                              style={{ background: tk.input, borderColor: tk.border, color: tk.text }} className="w-full rounded-xl border p-3 text-xs outline-none resize-none focus:border-brand transition-all"/>
+                          </div>
+                        ))}
+                        <button onClick={() => sendToAI('SYLLEDGE')} style={{ backgroundColor: brand }} className="w-full py-3 rounded-xl text-[9px] font-black uppercase tracking-widest text-white hover:opacity-90 transition-all">
+                          Sync & Analyze
+                        </button>
                       </div>
                     </div>
-                    <div className="lg:col-span-2 bg-white/5 border border-white/5 rounded-[32px] p-8 h-[600px] flex flex-col">
-                       <div className="flex items-center justify-between mb-8">
-                          <div className="flex items-center gap-4">
-                            <div className="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center text-blue-500">
-                              <Cpu size={20} />
-                            </div>
-                            <h3 className="text-xs font-black uppercase tracking-[0.3em]">Probabilistic Outcome Curve</h3>
-                          </div>
-                       </div>
-                       <div className="flex-1 w-full">
-                          <ResponsiveContainer width="100%" height="100%">
-                            <LineChart data={[
-                              { x: 0, y: 0 }, { x: 10, y: 5 }, { x: 20, y: 15 }, { x: 30, y: 12 },
-                              { x: 40, y: 25 }, { x: 50, y: 40 }, { x: 60, y: 38 }, { x: 70, y: 55 },
-                              { x: 80, y: 70 }, { x: 90, y: 65 }, { x: 100, y: 85 }
-                            ]}>
-                              <XAxis dataKey="x" hide />
-                              <YAxis hide />
-                              <Tooltip contentStyle={{backgroundColor: '#000', border: 'none', borderRadius: '12px', fontSize: '10px'}} />
-                              <Line type="monotone" dataKey="y" stroke={theme.primary} strokeWidth={4} dot={false} shadow="0 0 20px rgba(168,85,247,0.5)" />
-                            </LineChart>
-                          </ResponsiveContainer>
-                       </div>
-                       <div className="grid grid-cols-3 gap-4 mt-8">
-                          <div className="text-center p-4 bg-white/5 rounded-2xl">
-                             <p className="text-[8px] font-bold text-white/20 uppercase mb-1">Expectancy</p>
-                             <p className="text-sm font-black text-white">$420/trade</p>
-                          </div>
-                          <div className="text-center p-4 bg-white/5 rounded-2xl">
-                             <p className="text-[8px] font-bold text-white/20 uppercase mb-1">Max DD</p>
-                             <p className="text-sm font-black text-rose-500">8.4%</p>
-                          </div>
-                          <div className="text-center p-4 bg-white/5 rounded-2xl">
-                             <p className="text-[8px] font-bold text-white/20 uppercase mb-1">Recovery</p>
-                             <p className="text-sm font-black text-emerald-500">12 Days</p>
-                          </div>
-                       </div>
-                       {/* INSERT THE NEW SECTION HERE */}
-<div className="mt-10 pt-10 border-t border-white/5 space-y-8">
-  <div>
-    <label className="text-[10px] font-black uppercase tracking-widest text-purple-500 mb-4 block">
-      Strategy Narrative
-    </label>
-    <textarea 
-  value={strategyNarrative}
-  onChange={(e) => setStrategyNarrative(e.target.value)}
-  placeholder="Explain your setup logic..."
-  className="..." 
-/>
-  </div>
+                    <div style={{ background: tk.surface, borderColor: tk.border }} className="rounded-2xl border p-4">
+                      <h3 style={{ color: tk.text }} className="text-[9px] font-black uppercase tracking-widest mb-3">Quick Analysis</h3>
+                      <div className="space-y-1.5">
+                        {['Analyze my worst losing trades', 'Compare A+ vs B trades', 'Best days to trade?', 'How to improve my win rate?'].map((p, i) => (
+                          <button key={i} onClick={() => { setSylledgeInput(p); sendToAI('SYLLEDGE'); }}
+                            style={{ background: tk.input, borderColor: tk.border, color: tk.textMuted }}
+                            className="w-full text-left px-3 py-2 rounded-xl border text-[8px] font-bold hover:border-brand hover:text-brand transition-all">
+                            → {p}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
 
-  <div>
-    <label className="text-[10px] font-black uppercase tracking-widest text-purple-500 mb-4 block">
-      Neural Setup Evidence (Images)
-    </label>
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-      <label className="aspect-video rounded-[24px] border-2 border-dashed border-white/10 flex flex-col items-center justify-center cursor-pointer hover:bg-white/5 transition-all group overflow-hidden relative">
-        {entryImage ? (
-           <img src={URL.createObjectURL(entryImage)} className="w-full h-full object-cover" alt="Preview" />
-        ) : (
-          <>
-            <Upload className="text-white/20 group-hover:text-purple-500 mb-3" size={28} />
-            <span className="text-[10px] font-black uppercase text-white/20 group-hover:text-white tracking-widest">Upload Entry Chart</span>
-          </>
-        )}
-        <input type="file" className="hidden" onChange={(e) => setEntryImage(e.target.files[0])} />
-      </label>
-      
-      <div className="aspect-video rounded-[24px] bg-white/5 border border-white/10 flex flex-col items-center justify-center border-dashed">
-        <ImageIcon className="text-white/5 mb-2" size={32} />
-        <p className="text-[9px] font-black text-white/10 uppercase">Exit Analysis Preview</p>
-      </div>
-    </div>
-  </div>
-</div>
+                  {/* Chat panel */}
+                  <div style={{ background: tk.surface, borderColor: tk.border }} className="ai-chat-panel lg:col-span-2 rounded-2xl border flex flex-col overflow-hidden">
+                    <div style={{ borderColor: tk.border, background: tk.input }} className="p-4 border-b flex items-center gap-3">
+                      <div style={{ backgroundColor: brand }} className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"><Sparkles size={16} className="text-white"/></div>
+                      <div>
+                        <p style={{ color: tk.text }} className="text-[10px] font-black uppercase tracking-widest">SYLLEDGE AI</p>
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"/>
+                          <p style={{ color: tk.textDim }} className="text-[7px] font-bold uppercase">Neural Analysis Active</p>
+                        </div>
+                      </div>
+                    </div>
+                    <div ref={sylledgeChatRef} className="flex-1 overflow-y-auto p-4 space-y-3">
+                      {sylledgeMessages.map((m, i) => (
+                        <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                          <div style={{ backgroundColor: m.role === 'user' ? brand : tk.input, color: m.role === 'user' ? 'white' : tk.text, borderColor: m.role === 'user' ? 'transparent' : tk.border }}
+                            className="max-w-[85%] rounded-2xl px-4 py-3 text-[11px] leading-relaxed border whitespace-pre-wrap">{m.content}</div>
+                        </div>
+                      ))}
+                      {isAILoading && activeTab === 'SYLLEDGE' && (
+                        <div className="flex justify-start">
+                          <div style={{ background: tk.input, borderColor: tk.border, color: tk.textMuted }} className="rounded-2xl px-4 py-3 text-[11px] border ai-typing">Analyzing</div>
+                        </div>
+                      )}
+                    </div>
+                    <div style={{ borderColor: tk.border, background: tk.input }} className="p-3 border-t">
+                      <div style={{ background: tk.surface, borderColor: tk.border }} className="flex items-center gap-2 rounded-xl border px-3 py-2.5">
+                        <input value={sylledgeInput} onChange={e => setSylledgeInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && !e.shiftKey && sendToAI('SYLLEDGE')}
+                          placeholder="Ask SYLLEDGE about your performance..."
+                          style={{ color: tk.text, background: 'transparent' }} className="flex-1 text-xs outline-none placeholder:opacity-30"/>
+                        <button onClick={() => sendToAI('SYLLEDGE')} disabled={isAILoading || !sylledgeInput.trim()}
+                          style={{ backgroundColor: brand }} className="w-7 h-7 rounded-lg flex items-center justify-center disabled:opacity-40 transition-all flex-shrink-0">
+                          <Send size={12} className="text-white"/>
+                        </button>
+                      </div>
+                      <p style={{ color: tk.textDim }} className="text-[7px] text-center mt-1.5">Requires /api/ai route with ANTHROPIC_API_KEY</p>
                     </div>
                   </div>
                 </div>
               )}
 
-{activeTab === 'PLAYBOOK' && (
-  <div className="p-10 space-y-10 animate-in fade-in slide-in-from-bottom-4 duration-1000">
-    <div className="flex justify-between items-center">
-      <h2 className="text-4xl font-black italic tracking-tighter">NEURAL PLAYBOOK</h2>
-      <button 
-        onClick={() => setIsCreatingStrategy(true)}
-        className="px-6 py-3 bg-white text-black text-[10px] font-black uppercase tracking-widest rounded-full hover:scale-105 transition-all"
-      >
-        + Create New Strategy
-      </button>
-    </div>
+              {/* ╔══════════════════════════════════════════════════╗
+                  ║  AI BACKTEST                                     ║
+                  ╚══════════════════════════════════════════════════╝ */}
+              {activeTab === 'BACKTEST' && (
+                <div className="ai-panel-layout grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6" style={{ minHeight: 560 }}>
+                  <div className="ai-config-panel space-y-4 overflow-y-auto">
+                    <div style={{ background: tk.surface, borderColor: tk.border }} className="rounded-2xl border p-4 md:p-5">
+                      <div className="flex items-center gap-3 mb-4">
+                        <div style={{ backgroundColor: 'rgba(59,130,246,0.2)', color: '#3b82f6' }} className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"><Cpu size={16}/></div>
+                        <h3 style={{ color: tk.text }} className="text-[10px] font-black uppercase tracking-widest">Backtest Config</h3>
+                      </div>
+                      <div className="space-y-3">
+                        <div>
+                          <label style={{ color: tk.textMuted }} className="text-[7px] font-black uppercase tracking-widest block mb-1.5">Strategy Description</label>
+                          <textarea rows={4} value={backtestForm.strategyDesc} onChange={e => setBacktestForm(f => ({ ...f, strategyDesc: e.target.value }))} placeholder="Describe the strategy in detail..."
+                            style={{ background: tk.input, borderColor: tk.border, color: tk.text }} className="w-full rounded-xl border p-3 text-xs outline-none resize-none focus:border-brand transition-all"/>
+                        </div>
+                        <div>
+                          <label style={{ color: tk.textMuted }} className="text-[7px] font-black uppercase tracking-widest block mb-1.5">Confluences</label>
+                          <textarea rows={3} value={backtestForm.confluences} onChange={e => setBacktestForm(f => ({ ...f, confluences: e.target.value }))} placeholder="List all entry conditions..."
+                            style={{ background: tk.input, borderColor: tk.border, color: tk.text }} className="w-full rounded-xl border p-3 text-xs outline-none resize-none focus:border-brand transition-all"/>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                          {[
+                            { label: 'Asset',      key: 'asset',      opts: ['XAUUSD','NAS100','GER40','UKOIL'] },
+                            { label: 'Time Range', key: 'timeRange',  opts: ['3M','6M','1Y','2Y','3Y'] },
+                          ].map(f => (
+                            <div key={f.key}>
+                              <label style={{ color: tk.textMuted }} className="text-[7px] font-black uppercase tracking-widest block mb-1.5">{f.label}</label>
+                              <select value={backtestForm[f.key]} onChange={e => setBacktestForm(b => ({ ...b, [f.key]: e.target.value }))}
+                                style={{ background: tk.input, borderColor: tk.border, color: tk.text }} className="w-full rounded-xl border p-3 text-xs outline-none focus:border-brand transition-all">
+                                {f.opts.map(o => <option key={o} value={o}>{o}</option>)}
+                              </select>
+                            </div>
+                          ))}
+                          {[
+                            { label: 'Risk %',   key: 'riskPer'  },
+                            { label: 'Target RR', key: 'targetRR' },
+                          ].map(f => (
+                            <div key={f.key}>
+                              <label style={{ color: tk.textMuted }} className="text-[7px] font-black uppercase tracking-widest block mb-1.5">{f.label}</label>
+                              <input type="number" step="0.1" value={backtestForm[f.key]} onChange={e => setBacktestForm(b => ({ ...b, [f.key]: e.target.value }))}
+                                style={{ background: tk.input, borderColor: tk.border, color: tk.text }} className="w-full rounded-xl border p-3 text-xs outline-none focus:border-brand transition-all"/>
+                            </div>
+                          ))}
+                        </div>
+                        <button onClick={() => { setBacktestInput(`Please run a backtest for: ${backtestForm.strategyDesc}. Confluences: ${backtestForm.confluences}. Asset: ${backtestForm.asset}, range: ${backtestForm.timeRange}, risk: ${backtestForm.riskPer}%, target R:R: ${backtestForm.targetRR}.`); sendToAI('BACKTEST'); }}
+                          className="w-full py-3 rounded-xl text-[9px] font-black uppercase tracking-widest text-white hover:opacity-90 transition-all flex items-center justify-center gap-2" style={{ backgroundColor: '#3b82f6' }}>
+                          <Cpu size={13}/> Run AI Backtest
+                        </button>
+                      </div>
+                    </div>
+                  </div>
 
-    {/* Strategy Creator Form */}
-    {isCreatingStrategy && (
-      <div className="p-8 bg-white/5 border border-white/10 rounded-[32px] space-y-6">
-        <input 
-          placeholder="Strategy Name (e.g. ICT Silver Bullet)"
-          className="w-full bg-transparent border-b border-white/10 py-4 text-xl font-bold outline-none focus:border-purple-500"
-          onChange={(e) => setNewStrategy({...newStrategy, name: e.target.value})}
-        />
-        <div className="mb-6">
-  <label className="text-[10px] font-black uppercase tracking-widest text-purple-500 mb-4 block">Setup Quality Grade</label>
-  <div className="flex gap-2">
-    {['A+', 'A', 'B+', 'B'].map((grade) => (
-      <button 
-        key={grade}
-        onClick={() => setSelectedGrade(grade)}
-        className={`flex-1 py-3 rounded-xl text-[10px] font-black transition-all border ${
-          selectedGrade === grade 
-          ? 'bg-purple-500 border-purple-500 text-white shadow-[0_0_20px_rgba(168,85,247,0.4)]' 
-          : 'bg-white/5 border-white/10 text-white/40 hover:bg-white/10'
-        }`}
-      >
-        {grade}
-      </button>
-    ))}
-  </div>
-</div>
-        <button onClick={handleSaveStrategy} className="w-full py-4 bg-purple-500 rounded-xl font-black uppercase text-[10px] tracking-widest">
-          Sync to Neural Network
-        </button>
-      </div>
-    )}
-
-    {/* Display Custom + Default Strategies */}
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-      {[...customPlaybook, { name: 'Default Scalp', rules: 'Standard 1:2 RR', timeframe: '5M' }].map((strat, i) => (
-        <div key={i} className="p-8 bg-white/5 border border-white/5 rounded-[32px] hover:bg-white/[0.07] transition-all group">
-          <div className="flex justify-between items-start mb-6">
-            <h3 className="text-2xl font-black italic">{strat.name}</h3>
-            <span className="px-3 py-1 bg-purple-500/20 text-purple-400 text-[8px] font-black rounded-full">{strat.timeframe}</span>
-          </div>
-          <p className="text-sm text-white/40 leading-relaxed">{strat.rules}</p>
-        </div>
-      ))}
-    </div>
-  </div>
-)}
-
-{activeTab === 'SETTINGS' && (
-  <div className="flex h-full animate-in fade-in duration-700">
-    {/* INTERNAL SETTINGS SIDEBAR */}
-    <div className="w-64 border-r border-white/5 p-6 space-y-2">
-      <h2 className="text-xs font-black text-purple-500 uppercase tracking-[0.3em] mb-8 px-4">System Config</h2>
-      {[
-        { id: 'ACCOUNT', icon: User, label: 'Account Profile' },
-        { id: 'SECURITY', icon: ShieldCheck, label: 'Security & 2FA' },
-        { id: 'APPEARANCE', icon: Palette, label: 'Appearance' },
-        { id: 'PREFERENCES', icon: Languages, label: 'Preferences' },
-      ].map((item) => (
-        <button
-          key={item.id}
-          onClick={() => setActiveSettingsSubTab(item.id)}
-          className={`w-full flex items-center gap-4 px-4 py-4 rounded-2xl transition-all group ${
-            activeSettingsSubTab === item.id 
-            ? 'bg-purple-500/10 text-purple-500 border border-purple-500/20' 
-            : 'text-white/40 hover:bg-white/5 hover:text-white'
-          }`}
-        >
-          <item.icon size={18} className={activeSettingsSubTab === item.id ? 'animate-pulse' : ''} />
-          <span className="text-[10px] font-black uppercase tracking-widest">{item.label}</span>
-        </button>
-      ))}
-    </div>
-
-    {/* SETTINGS CONTENT AREA */}
-    <div className="flex-1 p-12 overflow-y-auto custom-scroll">
-      <div className="max-w-3xl space-y-10">
-        
-        {/* RENDER CONTENT BASED ON SUB-TAB */}
-        {activeSettingsSubTab === 'ACCOUNT' && (
-          <div className="space-y-8 animate-in slide-in-from-right-4 duration-500">
-            <h3 className="text-3xl font-black italic tracking-tighter uppercase">Account Profile</h3>
-            <div className="grid grid-cols-1 gap-6">
-               <div className="space-y-2">
-                 <label className="text-[9px] font-black text-white/30 uppercase tracking-widest px-1">Display Name</label>
-                 <input type="text" defaultValue="Neural Trader" className="w-full bg-white/5 border border-white/10 rounded-2xl p-5 text-sm font-bold outline-none focus:border-purple-500 transition-all" />
-               </div>
-               <div className="space-y-2">
-                 <label className="text-[9px] font-black text-white/30 uppercase tracking-widest px-1">Email Address</label>
-                 <input type="email" defaultValue="elite@sylledge.ai" className="w-full bg-white/5 border border-white/10 rounded-2xl p-5 text-sm font-bold outline-none focus:border-purple-500 transition-all" />
-               </div>
-            </div>
-          </div>
-        )}
-
-        {activeSettingsSubTab === 'SECURITY' && (
-          <div className="space-y-8 animate-in slide-in-from-right-4 duration-500">
-            <h3 className="text-3xl font-black italic tracking-tighter uppercase">Security Engine</h3>
-            <div className="p-8 bg-white/5 border border-white/10 rounded-[32px] flex items-center justify-between">
-              <div>
-                <p className="text-sm font-black uppercase">Two-Factor Authentication</p>
-                <p className="text-[10px] text-white/30">Add an extra layer of protection to your neural link.</p>
-              </div>
-              <div className="w-14 h-7 bg-white/10 rounded-full relative cursor-pointer">
-                <div className="absolute left-1 top-1 w-5 h-5 bg-white/20 rounded-full" />
-              </div>
-            </div>
-          </div>
-        )}
-
-{activeSettingsSubTab === 'APPEARANCE' && (
-  <div className="space-y-10 animate-in slide-in-from-right-4 duration-500">
-    <header>
-      <h3 className="text-3xl font-black italic tracking-tighter uppercase">Appearance Engine</h3>
-      <p className="text-[10px] text-white/30 uppercase tracking-[0.2em]">Visual Interface Customization</p>
-    </header>
-
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
-      {/* Theme Selection */}
-      <div className="space-y-4">
-        <label className="text-[9px] font-black uppercase text-white/30 tracking-widest">Interface Mode</label>
-        <div className="grid grid-cols-3 gap-3">
-          {['DARK', 'LIGHT', 'CYBER'].map(mode => (
-            <button 
-              key={mode}
-              onClick={() => setAppearance({...appearance, mode: mode.toLowerCase()})}
-              className={`py-4 rounded-2xl text-[10px] font-black border transition-all ${
-                appearance.mode === mode.toLowerCase() 
-                ? 'border-brand bg-brand/10 text-brand' 
-                : 'border-white/5 bg-white/5 text-white/40 hover:bg-white/10'
-              }`}
-            >
-              {mode}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Primary Color Panel */}
-      <div className="space-y-4">
-        <label className="text-[9px] font-black uppercase text-white/30 tracking-widest">Neural Brand Color</label>
-        <div className="flex flex-wrap gap-3">
-          {['#a855f7', '#3b82f6', '#10b981', '#f59e0b', '#ef4444'].map(color => (
-            <button 
-              key={color}
-              onClick={() => setAppearance({...appearance, primaryColor: color})}
-              className="w-10 h-10 rounded-full border-2 border-white/10 transition-transform hover:scale-110 active:scale-90"
-              style={{ backgroundColor: color, borderColor: appearance.primaryColor === color ? 'white' : 'transparent' }}
-            />
-          ))}
-          {/* Custom Color Picker */}
-          <div className="relative w-10 h-10 rounded-full overflow-hidden border-2 border-white/10 group">
-             <Plus size={14} className="absolute inset-0 m-auto pointer-events-none group-hover:rotate-90 transition-transform" />
-             <input 
-              type="color" 
-              value={appearance.primaryColor}
-              onChange={(e) => setAppearance({...appearance, primaryColor: e.target.value})}
-              className="absolute inset-0 w-full h-full scale-150 cursor-pointer opacity-0" 
-             />
-          </div>
-        </div>
-      </div>
-    </div>
-
-    {/* Live Preview Card */}
-    <div className="p-8 rounded-[32px] bg-white/5 border border-white/10 relative overflow-hidden group">
-      <div className="absolute top-0 right-0 w-32 h-32 bg-brand/20 blur-[50px] rounded-full -mr-16 -mt-16" />
-      <h4 className="text-xs font-black uppercase tracking-widest mb-4">Neural Preview</h4>
-      <div className="flex gap-4">
-        <div className="w-12 h-12 rounded-2xl bg-brand flex items-center justify-center shadow-lg shadow-brand/40">
-          <Zap size={20} className="text-black" />
-        </div>
-        <div>
-          <p className="text-sm font-bold">Sylledge Interface v3.0</p>
-          <p className="text-[10px] text-brand font-black uppercase tracking-widest">Active Neural Link</p>
-        </div>
-      </div>
-    </div>
-  </div>
-)}
-
-        {activeSettingsSubTab === 'PREFERENCES' && (
-          <div className="space-y-8 animate-in slide-in-from-right-4 duration-500">
-            <h3 className="text-3xl font-black italic tracking-tighter uppercase">Preferences</h3>
-            <div className="space-y-4">
-               <select className="w-full bg-white/5 border border-white/10 rounded-2xl p-5 text-sm font-bold outline-none appearance-none">
-                 <option>Language: English (US)</option>
-                 <option>Language: Français</option>
-               </select>
-            </div>
-          </div>
-        )}
-
-        {/* PERSISTENT SAVE BUTTON */}
-<div className="pt-10">
-  <button 
-    onClick={handleSyncSettings}
-    disabled={isSyncing}
-    className={`px-10 py-5 bg-white text-black text-[10px] font-black uppercase tracking-[0.3em] rounded-2xl hover:scale-105 active:scale-95 transition-all shadow-xl ${isSyncing ? 'opacity-50 cursor-not-allowed' : ''}`}
-  >
-    {isSyncing ? 'Syncing to Cloud...' : 'Sync Changes to Cloud'}
-  </button>
-</div>
-      </div>
-    </div>
-  </div>
-)}
-            </div>
-        
-
-     {/* --- 5. NEURAL ENTRY MODAL --- */}
-     {isLogModalOpen && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-6">
-            <div className="absolute inset-0 bg-black/80 backdrop-blur-2xl" onClick={() => setIsLogModalOpen(false)} />
-            <div className="relative w-full max-w-6xl bg-[#020408] border border-white/10 rounded-[40px] shadow-[0_0_100px_rgba(168,85,247,0.15)] overflow-hidden flex flex-col max-h-[95vh]">
-              <div className="p-10 border-b border-white/5 flex items-center justify-between bg-white/[0.02]">
-                <div>
-                  <h3 className="text-2xl font-black italic tracking-tighter">COMMIT NEW POSITION</h3>
-                  <p className="text-[10px] font-bold text-white/30 uppercase tracking-[0.4em]">Neural Validation Active</p>
+                  <div style={{ background: tk.surface, borderColor: tk.border }} className="ai-chat-panel lg:col-span-2 rounded-2xl border flex flex-col overflow-hidden">
+                    <div style={{ borderColor: tk.border, background: tk.input }} className="p-4 border-b flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#3b82f6' }}><Cpu size={16} className="text-white"/></div>
+                      <div>
+                        <p style={{ color: tk.text }} className="text-[10px] font-black uppercase tracking-widest">BACKTEST ENGINE</p>
+                        <p style={{ color: tk.textDim }} className="text-[7px] font-bold uppercase">AI-Powered Strategy Analysis</p>
+                      </div>
+                    </div>
+                    <div ref={backtestChatRef} className="flex-1 overflow-y-auto p-4 space-y-3">
+                      {backtestMessages.map((m, i) => (
+                        <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                          <div style={{ backgroundColor: m.role === 'user' ? '#3b82f6' : tk.input, color: m.role === 'user' ? 'white' : tk.text, borderColor: m.role === 'user' ? 'transparent' : tk.border }}
+                            className="max-w-[85%] rounded-2xl px-4 py-3 text-[11px] leading-relaxed border whitespace-pre-wrap">{m.content}</div>
+                        </div>
+                      ))}
+                      {isAILoading && activeTab === 'BACKTEST' && (
+                        <div className="flex justify-start">
+                          <div style={{ background: tk.input, borderColor: tk.border, color: tk.textMuted }} className="rounded-2xl px-4 py-3 text-[11px] border ai-typing">Processing</div>
+                        </div>
+                      )}
+                    </div>
+                    <div style={{ borderColor: tk.border, background: tk.input }} className="p-3 border-t">
+                      <div style={{ background: tk.surface, borderColor: tk.border }} className="flex items-center gap-2 rounded-xl border px-3 py-2.5">
+                        <input value={backtestInput} onChange={e => setBacktestInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && !e.shiftKey && sendToAI('BACKTEST')}
+                          placeholder="Ask about results, optimization..." style={{ color: tk.text, background: 'transparent' }} className="flex-1 text-xs outline-none placeholder:opacity-30"/>
+                        <button onClick={() => sendToAI('BACKTEST')} disabled={isAILoading || !backtestInput.trim()}
+                          className="w-7 h-7 rounded-lg flex items-center justify-center disabled:opacity-40 flex-shrink-0" style={{ backgroundColor: '#3b82f6' }}>
+                          <Send size={12} className="text-white"/>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
                 </div>
-                <button onClick={() => setIsLogModalOpen(false)} className="w-12 h-12 rounded-2xl bg-white/5 flex items-center justify-center hover:bg-white/10 transition-all">
-                  <X size={20} />
-                </button>
+              )}
+
+              {/* ╔══════════════════════════════════════════════════╗
+                  ║  PLAYBOOK                                        ║
+                  ╚══════════════════════════════════════════════════╝ */}
+              {activeTab === 'PLAYBOOK' && (
+                <div className="space-y-6">
+                  <div className="flex items-center justify-between flex-wrap gap-3">
+                    <div>
+                      <h2 style={{ color: tk.text }} className="text-2xl md:text-3xl font-black italic tracking-tighter">NEURAL PLAYBOOK</h2>
+                      <p style={{ color: tk.textDim }} className="text-[8px] font-bold uppercase tracking-[0.3em] mt-1">Strategy Library</p>
+                    </div>
+                    <button onClick={() => setIsCreatingStrategy(true)} style={{ backgroundColor: brand }} className="px-4 py-2.5 text-[9px] font-black uppercase tracking-widest rounded-xl text-white hover:opacity-90 transition-all flex items-center gap-2">
+                      <Plus size={13}/> New Strategy
+                    </button>
+                  </div>
+
+                  {isCreatingStrategy && (
+                    <div style={{ background: tk.surface, borderColor: `${brand}40` }} className="rounded-2xl border-2 p-5 space-y-4">
+                      <div className="flex items-center justify-between">
+                        <h3 style={{ color: tk.text }} className="text-base font-black uppercase">Create Strategy</h3>
+                        <button onClick={() => setIsCreatingStrategy(false)} style={{ color: tk.textMuted }}><X size={16}/></button>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <input placeholder="Strategy Name" value={newStrategy.name} onChange={e => setNewStrategy(s => ({ ...s, name: e.target.value }))}
+                          style={{ background: tk.input, borderColor: tk.border, color: tk.text }} className="rounded-xl border p-3 text-sm font-bold outline-none focus:border-brand transition-all"/>
+                        <select value={newStrategy.timeframe} onChange={e => setNewStrategy(s => ({ ...s, timeframe: e.target.value }))}
+                          style={{ background: tk.input, borderColor: tk.border, color: tk.text }} className="rounded-xl border p-3 text-sm font-bold outline-none focus:border-brand transition-all">
+                          {['1M','5M','15M','30M','1H','4H','D1'].map(tf => <option key={tf} value={tf}>{tf}</option>)}
+                        </select>
+                      </div>
+                      <textarea rows={2} placeholder="Strategy description..." value={newStrategy.description} onChange={e => setNewStrategy(s => ({ ...s, description: e.target.value }))}
+                        style={{ background: tk.input, borderColor: tk.border, color: tk.text }} className="w-full rounded-xl border p-3 text-sm outline-none resize-none focus:border-brand transition-all"/>
+                      <div>
+                        <label style={{ color: tk.textMuted }} className="text-[7px] font-black uppercase tracking-widest block mb-2">Add Confluences</label>
+                        <div className="flex gap-2 mb-2">
+                          <input placeholder="e.g. FVG Present" value={newStrategy.newConfluence} onChange={e => setNewStrategy(s => ({ ...s, newConfluence: e.target.value }))}
+                            onKeyDown={e => { if (e.key === 'Enter' && newStrategy.newConfluence.trim()) setNewStrategy(s => ({ ...s, confluences: [...s.confluences, s.newConfluence.trim()], newConfluence: '' })); }}
+                            style={{ background: tk.input, borderColor: tk.border, color: tk.text }} className="flex-1 rounded-xl border p-3 text-sm outline-none focus:border-brand transition-all"/>
+                          <button onClick={() => { if (newStrategy.newConfluence.trim()) setNewStrategy(s => ({ ...s, confluences: [...s.confluences, s.newConfluence.trim()], newConfluence: '' })); }}
+                            style={{ backgroundColor: brand }} className="px-4 py-2 rounded-xl text-white text-[9px] font-black uppercase">Add</button>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {newStrategy.confluences.map((c, i) => (
+                            <span key={i} style={{ backgroundColor: `${brand}20`, color: brand, borderColor: `${brand}40` }} className="flex items-center gap-1 px-2.5 py-1 rounded-full text-[8px] font-black border">
+                              {c} <button onClick={() => setNewStrategy(s => ({ ...s, confluences: s.confluences.filter((_, j) => j !== i) }))}><X size={9}/></button>
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                      <button onClick={() => {
+                        if (!newStrategy.name.trim()) return;
+                        const s = { id: Date.now(), name: newStrategy.name, timeframe: newStrategy.timeframe, description: newStrategy.description, confluences: newStrategy.confluences, grading: { 'A+': [], A: [], 'B+': [], B: [] }, active: true };
+                        setPlaybook(p => { const u = [...p, s]; localStorage.setItem('tradesylla_playbook', JSON.stringify(u)); return u; });
+                        setIsCreatingStrategy(false); setNewStrategy({ name: '', timeframe: '15M', description: '', confluences: [], newConfluence: '' });
+                      }} style={{ backgroundColor: brand }} className="w-full py-3 rounded-xl text-[9px] font-black uppercase tracking-widest text-white">
+                        Save to Playbook
+                      </button>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                    {playbook.map(strat => (
+                      <div key={strat.id} style={{ background: tk.surface, borderColor: selectedPlaybookId === strat.id ? brand : tk.border }}
+                        className="rounded-2xl border p-5 cursor-pointer transition-all hover:border-brand/50"
+                        onClick={() => setSelectedPlaybookId(selectedPlaybookId === strat.id ? null : strat.id)}>
+                        <div className="flex items-start justify-between mb-3">
+                          <div>
+                            <h3 style={{ color: tk.text }} className="text-base font-black italic">{strat.name}</h3>
+                            <div className="flex items-center gap-2 mt-1">
+                              <span style={{ backgroundColor: `${brand}20`, color: brand }} className="px-2 py-0.5 rounded-full text-[7px] font-black">{strat.timeframe}</span>
+                              <span className={`px-2 py-0.5 rounded-full text-[7px] font-black ${strat.active ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'}`}>{strat.active ? 'Active' : 'Paused'}</span>
+                            </div>
+                          </div>
+                        </div>
+                        <p style={{ color: tk.textMuted }} className="text-[9px] leading-relaxed mb-3">{strat.description}</p>
+                        <div className="flex flex-wrap gap-1 mb-3">
+                          {strat.confluences.slice(0, 4).map((c, i) => <span key={i} style={{ background: tk.input, color: tk.textMuted, borderColor: tk.border }} className="px-2 py-0.5 rounded-full text-[7px] border">{c}</span>)}
+                          {strat.confluences.length > 4 && <span style={{ color: tk.textDim }} className="text-[7px]">+{strat.confluences.length - 4}</span>}
+                        </div>
+                        <div style={{ borderColor: tk.border }} className="border-t pt-3">
+                          <div className="grid grid-cols-4 gap-1 mb-3">
+                            {['A+','A','B+','B'].map((g, gi) => (
+                              <div key={g} style={{ background: tk.input, borderColor: gi === 0 ? brand : tk.border }} className="rounded-lg border p-1.5 text-center">
+                                <p style={{ color: gi === 0 ? brand : tk.textMuted }} className="text-[8px] font-black">{g}</p>
+                              </div>
+                            ))}
+                          </div>
+                          {selectedPlaybookId === strat.id && (
+                            <div className="grid grid-cols-2 gap-2">
+                              <button onClick={e => { e.stopPropagation(); setActiveTab('BACKTEST'); setBacktestForm(f => ({ ...f, strategyDesc: strat.description, confluences: strat.confluences.join(', ') })); }}
+                                style={{ borderColor: tk.border, color: tk.textMuted }} className="py-2 rounded-xl border text-[8px] font-black uppercase hover:border-brand hover:text-brand transition-all">
+                                → Backtest
+                              </button>
+                              <button onClick={e => { e.stopPropagation(); setActiveTab('SYLLEDGE'); setSylledgeInput(`Analyze my ${strat.name} strategy`); }}
+                                style={{ backgroundColor: `${brand}20`, color: brand }} className="py-2 rounded-xl text-[8px] font-black uppercase hover:opacity-80 transition-all">
+                                → Sylledge AI
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* ╔══════════════════════════════════════════════════╗
+                  ║  TRADE LOG                                       ║
+                  ╚══════════════════════════════════════════════════╝ */}
+              {activeTab === 'TRADE_LOG' && (
+                <div className="space-y-5">
+                  <div className="flex items-center justify-between flex-wrap gap-3">
+                    <div>
+                      <h2 style={{ color: tk.text }} className="text-2xl md:text-3xl font-black italic tracking-tighter">TRADE LOG</h2>
+                      <p style={{ color: tk.textDim }} className="text-[8px] font-bold uppercase tracking-[0.3em]">Execution Data</p>
+                    </div>
+                    <div className="flex gap-2">
+                      <label style={{ borderColor: tk.border, color: tk.textMuted }} className="flex items-center gap-2 px-3 py-2 rounded-xl border text-[8px] font-black uppercase cursor-pointer hover:border-brand transition-all">
+                        <Upload size={12}/> Import CSV <input type="file" accept=".csv" onChange={handleFileUpload} className="hidden"/>
+                      </label>
+                      <button onClick={syncLiveMT5} disabled={isSyncing} style={{ backgroundColor: brand }} className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-[8px] font-black uppercase text-white hover:opacity-90 transition-all disabled:opacity-50">
+                        <Database size={12}/> {isSyncing ? 'Syncing...' : 'Sync MT5'}
+                      </button>
+                    </div>
+                  </div>
+                  <div style={{ background: tk.surface, borderColor: tk.border }} className="flex flex-wrap gap-4 p-3 rounded-2xl border items-center">
+                    {[
+                      { label: 'Asset',     key: 'asset',     opts: ['ALL','XAUUSD','NAS100','GER40','UKOIL'] },
+                      { label: 'Strategy',  key: 'strategy',  opts: ['ALL', ...playbook.map(s => s.name)] },
+                      { label: 'Direction', key: 'direction', opts: ['ALL','LONG','SHORT'] },
+                    ].map(f => (
+                      <div key={f.key} className="flex flex-col">
+                        <label style={{ color: brand }} className="text-[6px] font-black uppercase mb-1">{f.label}</label>
+                        <select value={filters[f.key]} onChange={e => setFilters(v => ({ ...v, [f.key]: e.target.value }))}
+                          style={{ background: 'transparent', color: tk.text }} className="text-[9px] font-black uppercase outline-none cursor-pointer">
+                          {f.opts.map(o => <option key={o} value={o}>{o}</option>)}
+                        </select>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ background: tk.surface, borderColor: tk.border }} className="rounded-2xl border overflow-hidden">
+                    <div className="table-wrapper">
+                      <table className="w-full">
+                        <thead>
+                          <tr style={{ background: tk.input, borderColor: tk.border }} className="border-b">
+                            {['Asset','Direction','Grade','Entry','Exit','P&L','Strategy','Date'].map(h => (
+                              <th key={h} style={{ color: tk.textDim }} className="px-4 py-3 text-left text-[7px] font-black uppercase tracking-widest">{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {tradeHistory.length === 0
+                            ? <tr><td colSpan={8} style={{ color: tk.textDim }} className="px-4 py-14 text-center text-[9px] font-bold uppercase">No trades logged yet.</td></tr>
+                            : tradeHistory.map((t, i) => (
+                              <tr key={i} style={{ borderColor: tk.border }} className="border-b last:border-0">
+                                <td style={{ color: tk.text }} className="px-4 py-3 text-[9px] font-black">{t.asset}</td>
+                                <td className="px-4 py-3"><span className={`px-2 py-0.5 rounded-full text-[7px] font-black ${t.direction === 'LONG' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'}`}>{t.direction}</span></td>
+                                <td className="px-4 py-3"><span style={{ backgroundColor: `${brand}20`, color: brand }} className="px-2 py-0.5 rounded-full text-[7px] font-black">{t.grade}</span></td>
+                                <td style={{ color: tk.textMuted }} className="px-4 py-3 text-[9px]">{t.entry}</td>
+                                <td style={{ color: tk.textMuted }} className="px-4 py-3 text-[9px]">{t.exit}</td>
+                                <td style={{ color: parseFloat(t.pnl) >= 0 ? '#10b981' : '#ef4444', filter: isPrivacyMode ? 'blur(8px)' : 'none' }} className="px-4 py-3 text-[9px] font-black">{parseFloat(t.pnl) >= 0 ? '+' : ''}${t.pnl}</td>
+                                <td style={{ color: tk.textMuted }} className="px-4 py-3 text-[9px]">{t.strategy}</td>
+                                <td style={{ color: tk.textDim }} className="px-4 py-3 text-[9px]">{t.date}</td>
+                              </tr>
+                            ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ╔══════════════════════════════════════════════════╗
+                  ║  SETTINGS                                        ║
+                  ╚══════════════════════════════════════════════════╝ */}
+              {activeTab === 'SETTINGS' && (
+                <div className="settings-layout flex gap-5">
+
+                  <div style={{ background: tk.surface, borderColor: tk.border }} className="settings-sidebar w-52 rounded-2xl border p-3 space-y-1 shrink-0 self-start sticky top-24">
+                    <p style={{ color: brand }} className="text-[7px] font-black uppercase tracking-[0.3em] px-3 pb-2">System Config</p>
+                    {[
+                      { id: 'ACCOUNT',      icon: User,       label: 'Account Profile' },
+                      { id: 'SECURITY',     icon: ShieldCheck,label: 'Security' },
+                      { id: 'NOTIFICATIONS',icon: Bell,       label: 'Notifications' },
+                      { id: 'APPEARANCE',   icon: Palette,    label: 'Appearance' },
+                      { id: 'PREFERENCES',  icon: Languages,  label: 'Preferences' },
+                    ].map(item => (
+                      <button key={item.id} onClick={() => setActiveSettingsSubTab(item.id)}
+                        style={{ color: activeSettingsSubTab === item.id ? brand : tk.textMuted, backgroundColor: activeSettingsSubTab === item.id ? `${brand}15` : 'transparent', borderColor: activeSettingsSubTab === item.id ? `${brand}40` : 'transparent' }}
+                        className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border transition-all text-left hover:bg-white/5">
+                        <item.icon size={14}/>
+                        <span className="text-[8px] font-black uppercase tracking-wider">{item.label}</span>
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="settings-content flex-1 max-w-2xl space-y-5">
+
+                    {activeSettingsSubTab === 'ACCOUNT' && (
+                      <div className="space-y-5">
+                        <h3 style={{ color: tk.text }} className="text-xl font-black italic tracking-tighter uppercase">Account Profile</h3>
+                        <div style={{ background: tk.surface, borderColor: tk.border }} className="rounded-2xl border p-5 space-y-4">
+                          <div className="flex items-center gap-4">
+                            <div style={{ backgroundColor: `${brand}20`, borderColor: brand }} className="w-16 h-16 rounded-2xl flex items-center justify-center text-3xl font-black border-2" style={{ borderColor: brand }}>
+                              {profile.name.charAt(0)}
+                            </div>
+                            <div>
+                              <p style={{ color: tk.text }} className="font-black">{profile.name}</p>
+                              <p style={{ color: tk.textMuted }} className="text-xs">{profile.email}</p>
+                              <button style={{ color: brand }} className="text-[8px] font-black uppercase tracking-wider mt-1">Change Photo</button>
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            {[
+                              { label: 'Display Name', k: 'name',        type: 'text' },
+                              { label: 'Email',        k: 'email',       type: 'email' },
+                              { label: 'Phone',        k: 'phone',       type: 'tel' },
+                              { label: 'Country',      k: 'country',     type: 'text' },
+                              { label: 'Broker',       k: 'broker',      type: 'text' },
+                            ].map(f => (
+                              <div key={f.k} className="space-y-1">
+                                <label style={{ color: tk.textMuted }} className="text-[7px] font-black uppercase tracking-widest">{f.label}</label>
+                                <input type={f.type} value={profile[f.k]} onChange={e => setProfile(p => ({ ...p, [f.k]: e.target.value }))}
+                                  style={{ background: tk.input, borderColor: tk.border, color: tk.text }} className="w-full rounded-xl border p-3 text-sm font-bold outline-none focus:border-brand transition-all"/>
+                              </div>
+                            ))}
+                            <div className="space-y-1">
+                              <label style={{ color: tk.textMuted }} className="text-[7px] font-black uppercase tracking-widest">Account Type</label>
+                              <select value={profile.accountType} onChange={e => setProfile(p => ({ ...p, accountType: e.target.value }))}
+                                style={{ background: tk.input, borderColor: tk.border, color: tk.text }} className="w-full rounded-xl border p-3 text-sm font-bold outline-none focus:border-brand transition-all">
+                                <option>Live</option><option>Demo</option><option>Prop Firm</option>
+                              </select>
+                            </div>
+                          </div>
+                          <div className="space-y-1">
+                            <label style={{ color: tk.textMuted }} className="text-[7px] font-black uppercase tracking-widest">Bio</label>
+                            <textarea rows={2} value={profile.bio} onChange={e => setProfile(p => ({ ...p, bio: e.target.value }))} placeholder="Your trading journey..."
+                              style={{ background: tk.input, borderColor: tk.border, color: tk.text }} className="w-full rounded-xl border p-3 text-sm outline-none resize-none focus:border-brand transition-all"/>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {activeSettingsSubTab === 'SECURITY' && (
+                      <div className="space-y-4">
+                        <h3 style={{ color: tk.text }} className="text-xl font-black italic tracking-tighter uppercase">Security</h3>
+                        {[
+                          { icon: Smartphone, k: 'twoFactor',  label: '2-Factor Authentication', desc: 'Protect your account with 2FA', color: brand },
+                          { icon: Bell,       k: 'loginAlerts',label: 'Login Alerts',             desc: 'Notify on new logins',         color: '#3b82f6' },
+                        ].map(item => (
+                          <div key={item.k} style={{ background: tk.surface, borderColor: tk.border }} className="rounded-2xl border p-4 flex items-center justify-between gap-4">
+                            <div className="flex items-center gap-3">
+                              <div style={{ backgroundColor: `${item.color}20`, color: item.color }} className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0"><item.icon size={16}/></div>
+                              <div>
+                                <p style={{ color: tk.text }} className="text-sm font-black">{item.label}</p>
+                                <p style={{ color: tk.textMuted }} className="text-[8px]">{item.desc}</p>
+                              </div>
+                            </div>
+                            <Toggle value={security[item.k]} onChange={v => setSecurity(s => ({ ...s, [item.k]: v }))}/>
+                          </div>
+                        ))}
+                        <div style={{ background: tk.surface, borderColor: tk.border }} className="rounded-2xl border p-4 space-y-3">
+                          <div className="flex items-center gap-2 mb-1">
+                            <Key size={14} style={{ color: brand }}/>
+                            <p style={{ color: tk.text }} className="text-sm font-black">Change Password</p>
+                          </div>
+                          {[['currentPassword','Current Password'],['newPassword','New Password'],['confirmPassword','Confirm Password']].map(([k, l]) => (
+                            <div key={k} className="space-y-1">
+                              <label style={{ color: tk.textMuted }} className="text-[7px] font-black uppercase tracking-widest">{l}</label>
+                              <input type="password" value={security[k]} onChange={e => setSecurity(s => ({ ...s, [k]: e.target.value }))}
+                                style={{ background: tk.input, borderColor: tk.border, color: tk.text }} className="w-full rounded-xl border p-3 text-sm font-bold outline-none focus:border-brand transition-all"/>
+                            </div>
+                          ))}
+                          <button style={{ backgroundColor: brand }} className="px-5 py-2.5 rounded-xl text-[8px] font-black uppercase tracking-wider text-white hover:opacity-90 transition-all">Update Password</button>
+                        </div>
+                        <div style={{ background: tk.surface, borderColor: tk.border }} className="rounded-2xl border p-4">
+                          <p style={{ color: tk.text }} className="text-sm font-black mb-2">Session Timeout</p>
+                          <select value={security.sessionTimeout} onChange={e => setSecurity(s => ({ ...s, sessionTimeout: e.target.value }))}
+                            style={{ background: tk.input, borderColor: tk.border, color: tk.text }} className="w-full rounded-xl border p-3 text-sm font-bold outline-none focus:border-brand transition-all">
+                            <option value="15">15 minutes</option><option value="30">30 minutes</option><option value="60">1 hour</option><option value="0">Never</option>
+                          </select>
+                        </div>
+                      </div>
+                    )}
+
+                    {activeSettingsSubTab === 'NOTIFICATIONS' && (
+                      <div className="space-y-4">
+                        <h3 style={{ color: tk.text }} className="text-xl font-black italic tracking-tighter uppercase">Notifications</h3>
+                        <div style={{ background: tk.surface, borderColor: tk.border }} className="rounded-2xl border overflow-hidden">
+                          {[
+                            { k: 'tradeAlerts', l: 'Trade Alerts',   d: 'Notify when trades are executed' },
+                            { k: 'aiInsights',  l: 'AI Insights',    d: 'SYLLEDGE analysis updates' },
+                            { k: 'weeklyReport',l: 'Weekly Report',  d: 'Performance summary every Monday' },
+                            { k: 'emailDigest', l: 'Email Digest',   d: 'Daily digest via email' },
+                          ].map((n, i, arr) => (
+                            <div key={n.k} style={{ borderColor: tk.border }} className={`flex items-center justify-between p-4 gap-4 ${i < arr.length - 1 ? 'border-b' : ''}`}>
+                              <div>
+                                <p style={{ color: tk.text }} className="text-sm font-black">{n.l}</p>
+                                <p style={{ color: tk.textMuted }} className="text-[8px]">{n.d}</p>
+                              </div>
+                              <Toggle value={notifications[n.k]} onChange={v => setNotifications(nt => ({ ...nt, [n.k]: v }))}/>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {activeSettingsSubTab === 'APPEARANCE' && (
+                      <div className="space-y-5">
+                        <h3 style={{ color: tk.text }} className="text-xl font-black italic tracking-tighter uppercase">Appearance</h3>
+                        <div style={{ background: tk.surface, borderColor: tk.border }} className="rounded-2xl border p-5 space-y-4">
+                          <label style={{ color: tk.textMuted }} className="text-[7px] font-black uppercase tracking-widest block">Interface Theme</label>
+                          <div className="grid grid-cols-3 gap-3">
+                            {[{ id: 'dark', label: 'Dark', preview: '#020408' }, { id: 'light', label: 'Light', preview: '#f0f4f8' }, { id: 'cyber', label: 'Cyber', preview: '#000a14' }].map(t => (
+                              <button key={t.id} onClick={() => setAppearance(a => ({ ...a, mode: t.id }))}
+                                style={{ borderColor: appearance.mode === t.id ? brand : tk.border, backgroundColor: appearance.mode === t.id ? `${brand}15` : tk.input }}
+                                className="p-3 rounded-xl border transition-all flex flex-col items-center gap-2">
+                                <div style={{ backgroundColor: t.preview }} className="w-full h-8 rounded-lg border border-white/10"/>
+                                <span style={{ color: appearance.mode === t.id ? brand : tk.textMuted }} className="text-[8px] font-black uppercase">{t.label}</span>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                        <div style={{ background: tk.surface, borderColor: tk.border }} className="rounded-2xl border p-5 space-y-3">
+                          <label style={{ color: tk.textMuted }} className="text-[7px] font-black uppercase tracking-widest block">Brand Color</label>
+                          <div className="flex flex-wrap gap-3 items-center">
+                            {['#a855f7','#3b82f6','#10b981','#f59e0b','#ef4444','#ec4899','#06b6d4'].map(c => (
+                              <button key={c} onClick={() => setAppearance(a => ({ ...a, primaryColor: c }))}
+                                style={{ backgroundColor: c, outline: appearance.primaryColor === c ? '3px solid white' : '3px solid transparent', outlineOffset: '2px' }}
+                                className="w-9 h-9 rounded-full transition-transform hover:scale-110"/>
+                            ))}
+                            <div className="relative w-9 h-9 rounded-full overflow-hidden border" style={{ borderColor: tk.border }}>
+                              <Plus size={12} className="absolute inset-0 m-auto pointer-events-none" style={{ color: tk.textMuted }}/>
+                              <input type="color" value={appearance.primaryColor} onChange={e => setAppearance(a => ({ ...a, primaryColor: e.target.value }))} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer scale-150"/>
+                            </div>
+                          </div>
+                        </div>
+                        {/* Live preview */}
+                        <div style={{ background: tk.surface, borderColor: tk.border }} className="rounded-2xl border p-5 relative overflow-hidden">
+                          <div style={{ backgroundColor: `${brand}20` }} className="absolute top-0 right-0 w-24 h-24 rounded-full -mr-8 -mt-8 blur-2xl pointer-events-none"/>
+                          <p style={{ color: tk.text }} className="text-[9px] font-black uppercase tracking-widest mb-3">Live Preview</p>
+                          <div className="flex gap-3 items-center">
+                            <div style={{ backgroundColor: brand }} className="w-10 h-10 rounded-xl flex items-center justify-center">
+                              <Zap size={18} className="text-white fill-white"/>
+                            </div>
+                            <div>
+                              <p style={{ color: tk.text }} className="text-sm font-black">TRADESYLLA</p>
+                              <p style={{ color: brand }} className="text-[8px] font-black uppercase tracking-widest">Neural Elite</p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {activeSettingsSubTab === 'PREFERENCES' && (
+                      <div className="space-y-4">
+                        <h3 style={{ color: tk.text }} className="text-xl font-black italic tracking-tighter uppercase">Preferences</h3>
+                        <div style={{ background: tk.surface, borderColor: tk.border }} className="rounded-2xl border p-5 space-y-4">
+                          {[
+                            { label: 'Language', k: 'language', opts: [['EN','English'],['FR','Français'],['ES','Español']] },
+                            { label: 'Timezone', k: 'timezone', opts: [['UTC','UTC'],['EST','EST'],['GMT','GMT'],['CET','CET']] },
+                            { label: 'Currency', k: 'currency', opts: [['USD','USD ($)'],['EUR','EUR (€)'],['GBP','GBP (£)']] },
+                          ].map(f => (
+                            <div key={f.k} className="space-y-1">
+                              <label style={{ color: tk.textMuted }} className="text-[7px] font-black uppercase tracking-widest">{f.label}</label>
+                              <select value={profile[f.k] || f.opts[0][0]} onChange={e => setProfile(p => ({ ...p, [f.k]: e.target.value }))}
+                                style={{ background: tk.input, borderColor: tk.border, color: tk.text }} className="w-full rounded-xl border p-3 text-sm font-bold outline-none focus:border-brand transition-all">
+                                {f.opts.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                              </select>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    <button onClick={handleSaveSettings} disabled={isSyncing} className="px-8 py-4 rounded-2xl text-[9px] font-black uppercase tracking-[0.3em] hover:scale-105 active:scale-95 transition-all shadow-xl disabled:opacity-50 bg-white text-black">
+                      {isSyncing ? '✓ Saved!' : 'Save Changes'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+            </div>
+          </main>
+        </div>
+
+        {/* ── TRADE MODAL ────────────────────────────────────────────────────── */}
+        {isLogModalOpen && (
+          <div className="modal-wrap fixed inset-0 z-[100] flex items-center justify-center p-4 md:p-6">
+            <div className="absolute inset-0 bg-black/85 backdrop-blur-2xl" onClick={() => setIsLogModalOpen(false)}/>
+            <div style={{ backgroundColor: tk.bg, borderColor: tk.border }} className="modal-inner relative w-full max-w-5xl rounded-[28px] border overflow-hidden flex flex-col max-h-[94vh]">
+              <div style={{ borderColor: tk.border, background: tk.surface }} className="p-5 border-b flex items-center justify-between">
+                <div>
+                  <h3 style={{ color: tk.text }} className="text-lg font-black italic tracking-tighter">LOG NEW POSITION</h3>
+                  <p style={{ color: tk.textDim }} className="text-[8px] font-bold uppercase tracking-[0.3em]">Neural Trade Entry</p>
+                </div>
+                <button onClick={() => setIsLogModalOpen(false)} style={{ background: tk.input, color: tk.textMuted }} className="w-9 h-9 rounded-xl flex items-center justify-center hover:bg-white/10 transition-all"><X size={16}/></button>
               </div>
 
-              <div className="flex-1 overflow-y-auto p-10 space-y-10 custom-scroll">
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
-                  
-                  {/* LEFT COLUMN: PRIMARY METRICS */}
-                  <div className="space-y-8">
-  <div className="grid grid-cols-2 gap-6">
-    <div className="space-y-3">
-      <label className="text-[9px] font-black uppercase text-white/30 tracking-widest">Trade Date</label>
-      <input type="date" className="w-full bg-white/5 border border-white/10 rounded-2xl p-5 text-sm font-bold text-white outline-none focus:border-purple-500 transition-all [color-scheme:dark]" />
-    </div>
-    <div className="space-y-3">
-      <label className="text-[9px] font-black uppercase text-white/30 tracking-widest">Strategy / Playbook</label>
-      <input type="text" placeholder="e.g. Silver Bullet" className="w-full bg-white/5 border border-white/10 rounded-2xl p-5 text-sm font-bold outline-none focus:border-purple-500 transition-all" />
-    </div>
-  </div>
+              <div className="flex-1 overflow-y-auto p-5">
+                <div className="modal-grid grid grid-cols-1 lg:grid-cols-2 gap-5">
 
-  {/* --- NEW: SETUP GRADING SELECTOR --- */}
-  <div className="space-y-3">
-    <label className="text-[9px] font-black uppercase text-white/30 tracking-widest">Neural Setup Grade</label>
-    <div className="flex gap-2">
-      {['A+', 'A', 'B+', 'B'].map((grade) => (
-        <button 
-          key={grade}
-          onClick={() => setSelectedGrade(grade)}
-          className={`flex-1 py-4 rounded-xl text-[10px] font-black transition-all border ${
-            selectedGrade === grade 
-            ? 'bg-purple-500 border-purple-500 text-white shadow-[0_0_20px_rgba(168,85,247,0.3)]' 
-            : 'bg-white/5 border-white/10 text-white/40 hover:bg-white/10'
-          }`}
-        >
-          {grade}
-        </button>
-      ))}
-    </div>
-  </div>
-
-  <div className="grid grid-cols-2 gap-6">
-    <div className="space-y-3">
-      <label className="text-[9px] font-black uppercase text-white/30 tracking-widest">Instrument</label>
-      <input type="text" placeholder="e.g. XAUUSD" className="w-full bg-white/5 border border-white/10 rounded-2xl p-5 text-sm font-bold outline-none focus:border-purple-500 transition-all" />
-    </div>
-    <div className="space-y-3">
-      <label className="text-[9px] font-black uppercase text-white/30 tracking-widest">Position Size</label>
-      <input type="text" placeholder="0.00" className="w-full bg-white/5 border border-white/10 rounded-2xl p-5 text-sm font-bold outline-none focus:border-purple-500 transition-all" />
-    </div>
-  </div>
-
-  {/* --- UPDATED: CONNECTED NARRATIVE --- */}
-  <div className="space-y-3">
-    <label className="text-[9px] font-black uppercase text-white/30 tracking-widest">Strategy Narrative</label>
-    <textarea 
-      rows={4} 
-      value={strategyNarrative}
-      onChange={(e) => setStrategyNarrative(e.target.value)}
-      placeholder="Describe the neural confluence (Why is this an A+?)..." 
-      className="w-full bg-white/5 border border-white/10 rounded-2xl p-5 text-sm font-bold outline-none focus:border-purple-500 transition-all resize-none" 
-    />
-  </div>
-</div>
-
-                  {/* RIGHT COLUMN: VISION & PSYCHOLOGY */}
-                  <div className="space-y-8">
+                  {/* LEFT */}
                   <div className="space-y-4">
-    <label className="text-[9px] font-black uppercase text-white/30 tracking-widest block">Market Vision (Image or URL)</label>
-                    {/* MT5 SYNC SECTION */}
-<div className="col-span-full mt-4 p-6 border-2 border-dashed border-white/10 rounded-3xl bg-white/5 hover:border-purple-500/50 transition-all text-center">
-  <input 
-    type="file" 
-    accept=".csv" 
-    onChange={handleFileUpload} 
-    className="hidden" 
-    id="mt5-upload" 
-  />
-  <label htmlFor="mt5-upload" className="cursor-pointer">
-    <div className="flex flex-col items-center gap-2">
-      <div className="w-12 h-12 rounded-full bg-purple-500/20 flex items-center justify-center text-purple-500">
-        <Upload size={20} />
-      </div>
-      <p className="text-xs font-bold uppercase tracking-widest">Sync MT5 History</p>
-      <p className="text-[10px] text-white/40">Drop your exported .csv report here</p>
-    </div>
-  </label>
-</div>
-                    {/* 1. Functional Image Upload Box */}
-    <div 
-      onClick={() => document.getElementById('imageUpload').click()}
-      className="aspect-video bg-white/5 border-2 border-dashed border-white/10 rounded-3xl flex flex-col items-center justify-center group hover:border-purple-500/50 transition-all cursor-pointer relative overflow-hidden"
-    >
-      {entryImage ? (
-        <img src={entryImage} alt="Preview" className="w-full h-full object-cover" />
-      ) : (
-        <>
-          <ImageIcon size={32} className="text-white/20 group-hover:text-purple-500 transition-colors mb-4" />
-          <p className="text-[10px] font-black uppercase tracking-widest text-white/20">Click to Upload Chart</p>
-        </>
-        )}
-        <input 
-          id="imageUpload" 
-          type="file" 
-          accept="image/*" 
-          className="hidden" 
-          onChange={(e) => {
-            const file = e.target.files[0];
-            if (file) {
-              setEntryImage(file); // Stores the actual file for Supabase
-            }
-          }}
-        />
-      </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <label style={{ color: tk.textMuted }} className="text-[7px] font-black uppercase tracking-widest">Trade Date</label>
+                        <input type="date" value={tradeForm.date} onChange={e => setTradeForm(t => ({ ...t, date: e.target.value }))}
+                          style={{ background: tk.input, borderColor: tk.border, color: tk.text }} className="w-full rounded-xl border p-3 text-sm font-bold outline-none focus:border-brand transition-all [color-scheme:dark]"/>
+                      </div>
+                      <div className="space-y-1">
+                        <label style={{ color: tk.textMuted }} className="text-[7px] font-black uppercase tracking-widest">Asset</label>
+                        <input type="text" value={tradeForm.asset} onChange={e => setTradeForm(t => ({ ...t, asset: e.target.value }))} placeholder="XAUUSD"
+                          style={{ background: tk.input, borderColor: tk.border, color: tk.text }} className="w-full rounded-xl border p-3 text-sm font-bold outline-none focus:border-brand transition-all"/>
+                      </div>
+                    </div>
 
-      {/* 2. New URL Input Field */}
-    <div className="relative group">
-      <div className="absolute inset-y-0 left-5 flex items-center pointer-events-none">
-        <Globe size={14} className="text-white/20 group-focus-within:text-purple-500 transition-colors" />
-      </div>
-      <input 
-        type="text" 
-        placeholder="Or paste TradingView/Chart URL..." 
-        value={chartUrl}
-        onChange={(e) => setChartUrl(e.target.value)}
-        className="w-full bg-white/5 border border-white/10 rounded-2xl p-5 pl-12 text-sm font-bold outline-none focus:border-purple-500 transition-all" 
-      />
-    </div>
-  </div>
+                    <div className="space-y-1">
+                      <label style={{ color: tk.textMuted }} className="text-[7px] font-black uppercase tracking-widest">Setup Grade</label>
+                      <div className="flex gap-2">
+                        {['A+','A','B+','B'].map(g => (
+                          <button key={g} onClick={() => setTradeForm(t => ({ ...t, grade: g }))}
+                            style={{ backgroundColor: tradeForm.grade === g ? brand : tk.input, borderColor: tradeForm.grade === g ? brand : tk.border, color: tradeForm.grade === g ? 'white' : tk.textMuted }}
+                            className="flex-1 py-2.5 rounded-xl border text-[9px] font-black transition-all">{g}</button>
+                        ))}
+                      </div>
+                    </div>
 
-                    <div className="space-y-4">
-                    <label className="text-[9px] font-black uppercase text-white/30 tracking-widest block">Mindset Tags</label>
-                      <div className="flex flex-wrap gap-3">
-                        {['Disciplined', 'FOMO', 'Aggressive', 'Zen', 'Revenge'].map(tag => (
-                          <button key={tag} className="px-4 py-2 bg-white/5 rounded-lg text-[8px] font-black uppercase border border-white/5 hover:border-purple-500 transition-all">
+                    <div className="space-y-1">
+                      <label style={{ color: tk.textMuted }} className="text-[7px] font-black uppercase tracking-widest">Direction</label>
+                      <div className="flex gap-2">
+                        {['LONG','SHORT'].map(d => (
+                          <button key={d} onClick={() => setTradeForm(t => ({ ...t, direction: d }))}
+                            style={{ backgroundColor: tradeForm.direction === d ? (d === 'LONG' ? '#10b981' : '#ef4444') : tk.input, borderColor: tradeForm.direction === d ? (d === 'LONG' ? '#10b981' : '#ef4444') : tk.border, color: tradeForm.direction === d ? 'white' : tk.textMuted }}
+                            className="flex-1 py-2.5 rounded-xl border text-[9px] font-black uppercase transition-all">{d}</button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      {[['Entry','entry'],['Exit','exit'],['Stop Loss','sl'],['Take Profit','tp'],['R:R','rr'],['P&L ($)','pnl']].map(([l, k]) => (
+                        <div key={k} className="space-y-1">
+                          <label style={{ color: tk.textMuted }} className="text-[7px] font-black uppercase tracking-widest">{l}</label>
+                          <input type="text" value={tradeForm[k]} onChange={e => setTradeForm(t => ({ ...t, [k]: e.target.value }))} placeholder="0.00"
+                            style={{ background: tk.input, borderColor: tk.border, color: tk.text }} className="w-full rounded-xl border p-3 text-sm font-bold outline-none focus:border-brand transition-all"/>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="space-y-1">
+                      <label style={{ color: tk.textMuted }} className="text-[7px] font-black uppercase tracking-widest">Strategy</label>
+                      <select value={tradeForm.strategy} onChange={e => setTradeForm(t => ({ ...t, strategy: e.target.value }))}
+                        style={{ background: tk.input, borderColor: tk.border, color: tk.text }} className="w-full rounded-xl border p-3 text-sm font-bold outline-none focus:border-brand transition-all">
+                        <option value="">Select Strategy</option>
+                        {playbook.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
+                      </select>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label style={{ color: tk.textMuted }} className="text-[7px] font-black uppercase tracking-widest">Strategy Narrative</label>
+                      <textarea rows={3} value={tradeForm.narrative} onChange={e => setTradeForm(t => ({ ...t, narrative: e.target.value }))} placeholder="Why is this an A+? Describe your confluence..."
+                        style={{ background: tk.input, borderColor: tk.border, color: tk.text }} className="w-full rounded-xl border p-3 text-sm font-bold outline-none resize-none focus:border-brand transition-all"/>
+                    </div>
+                  </div>
+
+                  {/* RIGHT */}
+                  <div className="space-y-4">
+                    <div className="space-y-1">
+                      <label style={{ color: tk.textMuted }} className="text-[7px] font-black uppercase tracking-widest">Chart Screenshot</label>
+                      <div onClick={() => document.getElementById('chartImgInput').click()}
+                        style={{ borderColor: tk.border, background: tk.input }} className="aspect-video rounded-2xl border-2 border-dashed flex flex-col items-center justify-center cursor-pointer hover:border-brand transition-all relative overflow-hidden group">
+                        {entryImagePreview
+                          ? <img src={entryImagePreview} className="w-full h-full object-cover" alt="Chart"/>
+                          : <><ImageIcon size={24} style={{ color: tk.textDim }} className="group-hover:text-brand transition-colors mb-2"/><p style={{ color: tk.textDim }} className="text-[8px] font-black uppercase tracking-widest group-hover:text-brand transition-colors">Upload Chart</p></>
+                        }
+                        <input id="chartImgInput" type="file" accept="image/*" className="hidden" onChange={handleImageSelect}/>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label style={{ color: tk.textMuted }} className="text-[7px] font-black uppercase tracking-widest">Import MT5 CSV</label>
+                      <label style={{ borderColor: tk.border, background: tk.input }} className="flex items-center gap-3 p-3 rounded-xl border-2 border-dashed cursor-pointer hover:border-brand transition-all">
+                        <div style={{ backgroundColor: `${brand}20`, color: brand }} className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"><Upload size={14}/></div>
+                        <div>
+                          <p style={{ color: tk.text }} className="text-[9px] font-black uppercase">Sync MT5 History</p>
+                          <p style={{ color: tk.textDim }} className="text-[7px]">Drop exported .csv report</p>
+                        </div>
+                        <input type="file" accept=".csv" onChange={handleFileUpload} className="hidden"/>
+                      </label>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label style={{ color: tk.textMuted }} className="text-[7px] font-black uppercase tracking-widest">TradingView URL</label>
+                      <div style={{ background: tk.input, borderColor: tk.border }} className="flex items-center gap-2 rounded-xl border px-3">
+                        <Globe size={12} style={{ color: tk.textDim }}/>
+                        <input type="text" value={tradeForm.chartUrl} onChange={e => setTradeForm(t => ({ ...t, chartUrl: e.target.value }))} placeholder="Paste chart URL..."
+                          style={{ background: 'transparent', color: tk.text }} className="flex-1 py-3 text-sm font-bold outline-none"/>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label style={{ color: tk.textMuted }} className="text-[7px] font-black uppercase tracking-widest">Mindset Tags</label>
+                      <div className="flex flex-wrap gap-2">
+                        {['Disciplined','FOMO','Confident','Zen','Revenge','Patient','Rushed'].map(tag => (
+                          <button key={tag} onClick={() => setTradeForm(t => ({ ...t, mindsetTags: t.mindsetTags.includes(tag) ? t.mindsetTags.filter(x => x !== tag) : [...t.mindsetTags, tag] }))}
+                            style={{ backgroundColor: tradeForm.mindsetTags.includes(tag) ? `${brand}20` : tk.input, borderColor: tradeForm.mindsetTags.includes(tag) ? brand : tk.border, color: tradeForm.mindsetTags.includes(tag) ? brand : tk.textMuted }}
+                            className="px-3 py-1.5 rounded-lg border text-[7px] font-black uppercase transition-all">
                             {tag}
                           </button>
                         ))}
                       </div>
                     </div>
 
-                    <div className="space-y-3">
-                      <label className="text-[9px] font-black uppercase text-white/30 tracking-widest">Psychological Narrative</label>
-                      <textarea rows={6} placeholder="Detailed state of mind during execution..." className="w-full bg-white/5 border border-white/10 rounded-2xl p-5 text-sm font-bold outline-none focus:border-purple-500 transition-all resize-none" />
+                    <div className="space-y-1">
+                      <label style={{ color: tk.textMuted }} className="text-[7px] font-black uppercase tracking-widest">Psychological Note</label>
+                      <textarea rows={4} value={tradeForm.psychNarrative} onChange={e => setTradeForm(t => ({ ...t, psychNarrative: e.target.value }))} placeholder="State of mind, discipline check..."
+                        style={{ background: tk.input, borderColor: tk.border, color: tk.text }} className="w-full rounded-xl border p-3 text-sm font-bold outline-none resize-none focus:border-brand transition-all"/>
                     </div>
-                    </div>
+                  </div>
                 </div>
               </div>
 
-             
-
-              <div className="p-10 border-t border-white/5 flex gap-6 bg-white/[0.02]">
-              <button 
-  onClick={handleCommitTrade}
-  className="flex-1 py-5 bg-white text-black rounded-[20px] text-xs font-black uppercase tracking-[0.2em] shadow-xl hover:scale-[1.02] active:scale-95 transition-all">
-  Commit to Sylledge
-</button>
+              <div style={{ borderColor: tk.border, background: tk.surface }} className="p-5 border-t">
+                <button onClick={handleCommitTrade} className="w-full py-4 bg-white text-black rounded-2xl text-[9px] font-black uppercase tracking-[0.2em] shadow-xl hover:scale-[1.02] active:scale-95 transition-all">
+                  Commit Position to TRADESYLLA
+                </button>
               </div>
             </div>
           </div>
         )}
 
-       {/* FLOATING ACTION BUTTON (Neural FAB) */}
-      <button 
-        onClick={() => setIsLogModalOpen(true)}
-        className="fixed bottom-10 right-10 w-20 h-20 rounded-full bg-white text-black flex items-center justify-center shadow-[0_20px_50px_rgba(255,255,255,0.3)] hover:scale-110 active:scale-90 transition-all z-40 group"
-      >
-        <Plus size={32} strokeWidth={3} className="group-hover:rotate-90 transition-transform duration-500" />
-        <div className="absolute inset-0 rounded-full bg-white animate-ping opacity-20 pointer-events-none" />
-      </button>
+        {/* ── FAB (bottom right only) ────────────────────────────────────────── */}
+        <button onClick={() => setIsLogModalOpen(true)}
+          className="fab-btn fixed bottom-8 right-8 w-16 h-16 rounded-full bg-white text-black flex items-center justify-center shadow-[0_16px_40px_rgba(255,255,255,0.25)] hover:scale-110 active:scale-90 transition-all z-50 group">
+          <Plus size={28} strokeWidth={3} className="group-hover:rotate-90 transition-transform duration-500"/>
+          <div className="absolute inset-0 rounded-full bg-white animate-ping opacity-15 pointer-events-none"/>
+        </button>
 
-    </div> {/* Closes the div from line 165 */}
-  </main> {/* Closes the main from line 164 */}
-</div> {/* Closes the div from line 59 */}
-</div> {/* Closes the div from line 49 */}
-</>
+      </div>
+    </>
   );
 };
 
 export default TradingTerminal;
+
+/*
+═══════════════════════════════════════════════
+ CREATE: app/api/ai/route.js
+═══════════════════════════════════════════════
+import Anthropic from '@anthropic-ai/sdk';
+const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+export async function POST(req) {
+  const { messages, system } = await req.json();
+  try {
+    const r = await client.messages.create({ model: 'claude-sonnet-4-20250514', max_tokens: 1024, system, messages });
+    return Response.json({ content: r.content[0].text });
+  } catch (e) {
+    return Response.json({ error: e.message }, { status: 500 });
+  }
+}
+
+ADD TO .env.local:
+  ANTHROPIC_API_KEY=your_key
+  NEXT_PUBLIC_METAAPI_TOKEN=your_token
+  NEXT_PUBLIC_METAAPI_ACCOUNT_ID=your_account_id
+
+RUN: npm install @anthropic-ai/sdk
+═══════════════════════════════════════════════
+*/
