@@ -79,7 +79,6 @@ const TradingTerminal = () => {
     { name: 'Jan 23', val: 450 }, { name: 'Jan 26', val: -80 }, { name: 'Jan 30', val: 1100 },
   ]);
   const [tradeHistory,         setTradeHistory]         = useState([]);
-  const [importStatus,         setImportStatus]         = useState(''); // '', 'loading', 'success:N', 'error:msg'
   const [filters,              setFilters]              = useState({ asset: 'ALL', strategy: 'ALL', direction: 'ALL' });
   const [tradeForm,            setTradeForm]            = useState({ date: '', strategy: '', grade: 'A', asset: 'XAUUSD', direction: 'LONG', entry: '', exit: '', sl: '', tp: '', rr: '', pnl: '', narrative: '', mindsetTags: [], psychNarrative: '', chartUrl: '' });
   const [entryImage,           setEntryImage]           = useState(null);
@@ -110,53 +109,42 @@ const TradingTerminal = () => {
   const brand = appearance.primaryColor;
 
   const stats = useMemo(() => {
-    // Use rich tradeHistory when imported; fall back to chartData
-    const data = tradeHistory.length > 0
-      ? tradeHistory.map(t => ({ val: parseFloat(t.netPnL ?? t.pnl ?? 0), ...t }))
-      : chartData;
-    if (!data.length) return { winRate: '0.0', profitFactor: '0', totalTrades: 0, netPnL: '0.00', avgWin: '0.00', avgLoss: '0.00', expectancy: '0.00', maxDrawdown: '0.00', bestDay: '0.00', worstDay: '0.00', currentStreak: 0, grossPnL: '0.00', totalCommission: '0.00' };
-    const wins   = data.filter(t => t.val > 0);
-    const losses = data.filter(t => t.val < 0);
+    if (!chartData.length) return { winRate: '0.0', profitFactor: '0', totalTrades: 0, netPnL: '0.00', avgWin: '0.00', avgLoss: '0.00', expectancy: '0.00', maxDrawdown: '0.00', bestDay: '0.00', worstDay: '0.00', currentStreak: 0 };
+    const wins   = chartData.filter(t => t.val > 0);
+    const losses = chartData.filter(t => t.val < 0);
     const winSum  = wins.reduce((s, t) => s + t.val, 0);
     const lossSum = Math.abs(losses.reduce((s, t) => s + t.val, 0));
     const avgWin  = wins.length   ? winSum  / wins.length   : 0;
     const avgLoss = losses.length ? lossSum / losses.length : 0;
-    const expectancy = (wins.length / data.length) * avgWin - (losses.length / data.length) * avgLoss;
+    const expectancy = (wins.length / chartData.length) * avgWin - (losses.length / chartData.length) * avgLoss;
     let peak = 0, running = 0, maxDD = 0;
-    data.forEach(t => { running += t.val; if (running > peak) peak = running; const dd = peak - running; if (dd > maxDD) maxDD = dd; });
+    chartData.forEach(t => { running += t.val; if (running > peak) peak = running; const dd = peak - running; if (dd > maxDD) maxDD = dd; });
     let streak = 0;
-    for (let i = data.length - 1; i >= 0; i--) {
-      const w = data[i].val > 0;
-      if (i === data.length - 1) { streak = w ? 1 : -1; }
+    for (let i = chartData.length - 1; i >= 0; i--) {
+      const w = chartData[i].val > 0;
+      if (i === chartData.length - 1) { streak = w ? 1 : -1; }
       else if ((streak > 0 && w) || (streak < 0 && !w)) { streak = w ? streak + 1 : streak - 1; }
       else break;
     }
-    const totalComm = tradeHistory.reduce((s, t) => s + (parseFloat(t.commission) || 0), 0);
-    const grossPnL  = tradeHistory.reduce((s, t) => s + (parseFloat(t.grossPnL) || 0), 0);
     return {
-      winRate:          ((wins.length / data.length) * 100).toFixed(1),
-      profitFactor:     lossSum > 0 ? (winSum / lossSum).toFixed(2) : winSum > 0 ? '∞' : '0',
-      totalTrades:      data.length,
-      netPnL:           data.reduce((s, t) => s + t.val, 0).toFixed(2),
-      avgWin:           avgWin.toFixed(2),
-      avgLoss:          avgLoss.toFixed(2),
-      expectancy:       expectancy.toFixed(2),
-      maxDrawdown:      maxDD.toFixed(2),
-      bestDay:          Math.max(...data.map(t => t.val)).toFixed(2),
-      worstDay:         Math.min(...data.map(t => t.val)).toFixed(2),
-      currentStreak:    streak,
-      grossPnL:         grossPnL.toFixed(2),
-      totalCommission:  totalComm.toFixed(2),
+      winRate:       ((wins.length / chartData.length) * 100).toFixed(1),
+      profitFactor:  lossSum > 0 ? (winSum / lossSum).toFixed(2) : winSum > 0 ? '∞' : '0',
+      totalTrades:   chartData.length,
+      netPnL:        chartData.reduce((s, t) => s + t.val, 0).toFixed(2),
+      avgWin:        avgWin.toFixed(2),
+      avgLoss:       avgLoss.toFixed(2),
+      expectancy:    expectancy.toFixed(2),
+      maxDrawdown:   maxDD.toFixed(2),
+      bestDay:       Math.max(...chartData.map(t => t.val)).toFixed(2),
+      worstDay:      Math.min(...chartData.map(t => t.val)).toFixed(2),
+      currentStreak: streak,
     };
-  }, [chartData, tradeHistory]);
+  }, [chartData]);
 
   const cumulativePnL = useMemo(() => {
-    const source = tradeHistory.length > 0
-      ? tradeHistory.map(t => ({ name: t.name || t.date, val: parseFloat(t.netPnL ?? t.pnl ?? 0) }))
-      : chartData;
     let r = 0;
-    return source.map(t => ({ name: t.name, cumulative: parseFloat((r += t.val).toFixed(2)), daily: t.val }));
-  }, [chartData, tradeHistory]);
+    return chartData.map(t => ({ name: t.name, cumulative: parseFloat((r += t.val).toFixed(2)), daily: t.val }));
+  }, [chartData]);
 
   const radarData = useMemo(() => {
     const wr = parseFloat(stats.winRate) / 100;
@@ -185,8 +173,6 @@ const TradingTerminal = () => {
     if (p) { try { setProfile(JSON.parse(p)); } catch (_) {} }
     const pb = localStorage.getItem('tradesylla_playbook');
     if (pb) { try { setPlaybook(JSON.parse(pb)); } catch (_) {} }
-    const th = localStorage.getItem('tradesylla_trades');
-    if (th) { try { const parsed = JSON.parse(th); if (parsed.length) { setTradeHistory(parsed); setChartData(parsed.map(t => ({ name: t.name, val: t.val }))); } } catch (_) {} }
     setHasMounted(true);
     const mm = (e) => setMousePos({ x: (e.clientX / window.innerWidth) * 100, y: (e.clientY / window.innerHeight) * 100 });
     window.addEventListener('mousemove', mm);
@@ -231,137 +217,18 @@ const TradingTerminal = () => {
     finally     { setIsSyncing(false); }
   };
 
-  // ── SESSION HELPER ────────────────────────────────────────────────────────
-  const getSession = (timeStr) => {
-    if (!timeStr) return 'Unknown';
-    const h = parseInt((String(timeStr).split(' ')[1] || '00:00').split(':')[0]);
-    if (h >= 7  && h < 10) return 'London Open';
-    if (h >= 10 && h < 13) return 'London Mid';
-    if (h >= 13 && h < 16) return 'NY/London Overlap';
-    if (h >= 16 && h < 20) return 'New York';
-    if (h >= 20 || h < 3 ) return 'Asia';
-    return 'London Pre';
-  };
-
-  const getDuration = (entryStr, exitStr) => {
-    if (!entryStr || !exitStr) return '—';
-    try {
-      // Format: "2025.12.11 08:15:04"
-      const parse = s => new Date(String(s).replace(/\./g, '-').replace(' ', 'T') + 'Z');
-      const diff  = (parse(exitStr) - parse(entryStr)) / 1000;
-      if (diff <= 0) return '—';
-      const h = Math.floor(diff / 3600);
-      const m = Math.floor((diff % 3600) / 60);
-      return h > 0 ? `${h}h ${m}m` : `${m}m`;
-    } catch { return '—'; }
-  };
-
-  // ── MT5 FRENCH CSV PARSER ─────────────────────────────────────────────────
-  // Handles:  Heure, Position, Symbole, Type, Volume, Prix, S/L, T/P,
-  //           Heure(exit), Prix(exit), Commission, Echange(swap), Profit
-  const parseMT5CSV = (rawText) => {
-    const lines  = rawText.replace(/\r/g, '').split('\n');
-    const trades = [];
-
-    for (const line of lines) {
-      if (!line.trim()) continue;
-
-      // Split — but be careful: some cells may be empty (no SL/TP)
-      const cols = line.split(',').map(c => c.trim().replace(/^"|"$/g, ''));
-      if (cols.length < 12) continue;
-
-      const type = (cols[3] || '').toLowerCase();
-      if (type !== 'buy' && type !== 'sell') continue; // skip headers / balance rows
-
-      const symbol = cols[2] || '';
-      if (!symbol || symbol === 'Symbole' || symbol === 'Symbol') continue;
-
-      const profit     = parseFloat(cols[12]);
-      if (isNaN(profit)) continue;
-
-      const commission = parseFloat(cols[10]) || 0;
-      const swap       = parseFloat(cols[11]) || 0;
-      const netPnL     = parseFloat((profit + commission + swap).toFixed(2));
-
-      const entryTime  = cols[0];  // "2025.12.11 08:15:04"
-      const exitTime   = cols[8];  // "2025.12.11 14:36:09"
-      const dateKey    = entryTime.slice(0, 10).replace(/\./g, '-'); // "2025-12-11"
-      const displayDate = new Date(dateKey).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-
-      trades.push({
-        id:           Date.now() + Math.random(),
-        ticket:       cols[1]  || '',
-        symbol,
-        asset:        symbol,
-        direction:    type === 'buy' ? 'LONG' : 'SHORT',
-        volume:       parseFloat(cols[4])  || 0,
-        entryPrice:   parseFloat(cols[5])  || 0,
-        sl:           parseFloat(cols[6])  || 0,
-        tp:           parseFloat(cols[7])  || 0,
-        exitPrice:    parseFloat(cols[9])  || 0,
-        commission,
-        swap,
-        grossPnL:     profit,
-        netPnL,
-        pnl:          netPnL,
-        val:          netPnL,         // used by chartData / stats
-        entryTime,
-        exitTime,
-        date:         dateKey,
-        name:         displayDate,    // used by chart X-axis
-        duration:     getDuration(entryTime, exitTime),
-        session:      getSession(entryTime),
-        // fields the user can enrich later
-        grade:        '',
-        strategy:     '',
-        narrative:    '',
-        mindsetTags:  [],
-      });
-    }
-    return trades;
-  };
-
   const handleFileUpload = (e) => {
     const file = e.target.files[0];
     if (!file) return;
-
-    setImportStatus('⏳ Parsing file...');
-
     const reader = new FileReader();
     reader.onload = (ev) => {
-      try {
-        const trades = parseMT5CSV(ev.target.result);
-
-        if (trades.length === 0) {
-          setImportStatus('⚠️ No valid trades found. Make sure it\'s an MT5 history export.');
-          return;
-        }
-
-        // Merge with existing trades (avoid duplicates by ticket)
-        setTradeHistory(prev => {
-          const existingTickets = new Set(prev.map(t => t.ticket));
-          const newTrades = trades.filter(t => !existingTickets.has(t.ticket) || !t.ticket);
-          const merged = [...newTrades, ...prev];
-          try { localStorage.setItem('tradesylla_trades', JSON.stringify(merged)); } catch (_) {}
-          return merged;
-        });
-
-        // Also update chartData so the equity curve refreshes immediately
-        setChartData(trades.map(t => ({ name: t.name, val: t.val })));
-
-        setImportStatus(`✅ ${trades.length} trades imported — ${[...new Set(trades.map(t => t.symbol))].join(', ')}`);
-        setTimeout(() => setImportStatus(''), 6000);
-
-      } catch (err) {
-        setImportStatus('❌ Error: ' + err.message);
-      }
+      const parsed = ev.target.result.split('\n').slice(1).filter(r => r.trim()).map((r, i) => {
+        const cols = r.split(',');
+        return { name: cols[0]?.trim() || `Trade ${i + 1}`, val: parseFloat(cols[1]) || 0 };
+      });
+      if (parsed.length) setChartData(parsed);
     };
-
-    reader.onerror = () => setImportStatus('❌ Could not read file.');
-    reader.readAsText(file, 'UTF-8');
-
-    // Reset input so the same file can be re-imported if needed
-    e.target.value = '';
+    reader.readAsText(file);
   };
 
   const handleImageSelect = (e) => {
@@ -430,16 +297,17 @@ const TradingTerminal = () => {
       const pnl  = has ? (d % 2 === 0 ? 420 : -150) : 0;
       const cnt  = has ? (d % 5) + 1 : 0;
       cells.push(
-        <div key={d} style={{ background: tk.surface, borderColor: tk.border, border: `1px solid ${tk.border}`, borderRadius: 10, aspectRatio: '1', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', padding: '4px 5px', cursor: 'pointer', position: 'relative', overflow: 'hidden' }}>
-          <span style={{ color: tk.textMuted, fontSize: 9, fontWeight: 900 }}>{d}</span>
+        <div key={d} style={{ background: tk.surface, borderColor: tk.border }} className="aspect-square rounded-xl border flex flex-col justify-between p-1.5 md:p-2 group hover:opacity-90 transition-all cursor-pointer relative overflow-hidden">
+          <span style={{ color: tk.textMuted }} className="text-[10px] md:text-[11px] font-black">{d}</span>
           {has && (
-            <div>
-              <div style={{ backgroundColor: pnl >= 0 ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.15)', borderRadius: 5, padding: '2px 3px', textAlign: 'center', marginBottom: 1 }}>
-                <p style={{ color: pnl >= 0 ? '#10b981' : '#ef4444', fontSize: 7, fontWeight: 900 }}>{pnl >= 0 ? `+$${pnl}` : `-$${Math.abs(pnl)}`}</p>
+            <div className="space-y-0.5">
+              <div className={`px-1 py-0.5 rounded-md text-center ${pnl >= 0 ? 'bg-emerald-500/20' : 'bg-rose-500/20'}`}>
+                <p className={`text-[7px] md:text-[9px] font-black ${pnl >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>{pnl >= 0 ? `+$${pnl}` : `-$${Math.abs(pnl)}`}</p>
               </div>
-              <p style={{ color: tk.textDim, fontSize: 6, textAlign: 'center' }}>{cnt}T</p>
+              <p style={{ color: tk.textDim }} className="text-[6px] md:text-[7px] text-center">{cnt}T</p>
             </div>
           )}
+          <div className={`absolute inset-0 opacity-0 group-hover:opacity-10 transition-opacity pointer-events-none ${pnl > 0 ? 'bg-emerald-500' : pnl < 0 ? 'bg-rose-500' : ''}`} />
         </div>
       );
     }
@@ -449,105 +317,48 @@ const TradingTerminal = () => {
   // ══ RENDER ════════════════════════════════════════════════════════════════════
   return (
     <>
-      <style>{`
-        /* ── RESET ───────────────────────────────────── */
-        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-        html, body { overflow-x: hidden; -webkit-font-smoothing: antialiased; -webkit-text-size-adjust: 100%; }
+      <style jsx global>{`
+        *, *::before, *::after { box-sizing: border-box; }
+        html, body { overflow-x: hidden; margin: 0; padding: 0; -webkit-font-smoothing: antialiased; }
         :root { --brand: ${brand}; --brand-glow: ${brand}44; }
-        ::-webkit-scrollbar { width: 4px; height: 4px; }
+        ::-webkit-scrollbar { width: 4px; }
         ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 2px; }
+        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
         select option { background: #0a0a0a; color: white; }
         .ai-typing::after { content: '▋'; animation: blink 1s infinite; }
         @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
         * { -webkit-tap-highlight-color: transparent; }
-        button { touch-action: manipulation; cursor: pointer; }
+        button { touch-action: manipulation; }
         input, textarea, select { font-size: 16px !important; }
 
-        /* ── SIDEBAR / NAV ───────────────────────────── */
-        .desktop-sidebar { display: none; position: fixed; left: 0; top: 0; height: 100%; flex-direction: column; z-index: 50; transition: width 0.4s cubic-bezier(.4,0,.2,1); }
-        .mobile-nav      { display: flex; position: fixed; bottom: 0; left: 0; width: 100%; z-index: 100; justify-content: space-around; align-items: center; padding: 6px 4px 10px; }
-
-        /* ── MAIN LAYOUT ─────────────────────────────── */
-        .main-content { flex: 1; min-height: 100vh; padding-left: 0; }
-        .page-pad     { padding: 14px 14px 80px; max-width: 1600px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
-
-        /* ── KPI CARDS ───────────────────────────────── */
-        .kpi-grid      { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-        .kpi-card-inner { display: flex; align-items: center; justify-content: space-between; gap: 6px; overflow: hidden; }
-        .kpi-val       { font-size: 1.1rem; font-weight: 900; font-style: italic; letter-spacing: -0.03em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .kpi-gauge     { flex-shrink: 0; }
-
-        /* ── GRIDS (mobile-first 1-col) ──────────────── */
-        .secondary-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-        .charts-grid    { display: grid; grid-template-columns: 1fr; gap: 14px; }
-        .bottom-grid    { display: grid; grid-template-columns: 1fr; gap: 14px; }
-        .playbook-grid  { display: grid; grid-template-columns: 1fr; gap: 14px; }
-
-        /* ── AI PANELS ───────────────────────────────── */
-        .ai-panel-layout { display: flex; flex-direction: column; gap: 14px; }
-        .ai-config-panel { overflow-y: auto; }
-        .ai-chat-panel   { height: 52vh; min-height: 300px; display: flex; flex-direction: column; overflow: hidden; border-radius: 16px; }
-
-        /* ── SETTINGS ────────────────────────────────── */
-        .settings-layout  { display: flex; flex-direction: column; gap: 14px; }
-        .settings-sidebar { display: flex; flex-direction: row; overflow-x: auto; -webkit-overflow-scrolling: touch; gap: 6px; padding: 8px; flex-shrink: 0; border-radius: 16px; }
-        .settings-sidebar button { flex-shrink: 0; white-space: nowrap; }
-        .settings-content { flex: 1; min-width: 0; }
-
-        /* ── TABLE ───────────────────────────────────── */
-        .table-wrapper       { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-        .table-wrapper table { min-width: 760px; width: 100%; border-collapse: collapse; }
-
-        /* ── TOGGLE ROW ──────────────────────────────── */
-        .toggle-row      { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: nowrap; }
-        .toggle-info     { flex: 1 1 0; min-width: 0; overflow: hidden; }
-
-        /* ── MODAL ───────────────────────────────────── */
-        .modal-wrap  { position: fixed; inset: 0; z-index: 200; display: flex; align-items: flex-end; }
-        .modal-inner { border-radius: 24px 24px 0 0; max-width: 100%; width: 100%; max-height: 92vh; display: flex; flex-direction: column; }
-        .modal-grid  { display: grid; grid-template-columns: 1fr; gap: 16px; }
-
-        /* ── FAB ─────────────────────────────────────── */
-        .fab-btn { position: fixed; bottom: 76px; right: 14px; width: 50px; height: 50px; }
-
-        /* ── CHART HEIGHTS ───────────────────────────── */
-        .chart-wrap { height: 200px; }
-
-        /* ── TABLET (≥640px) ─────────────────────────── */
-        @media (min-width: 640px) {
-          .kpi-grid       { grid-template-columns: repeat(3, 1fr); gap: 12px; }
-          .secondary-grid { grid-template-columns: repeat(4, 1fr); }
-          .playbook-grid  { grid-template-columns: 1fr 1fr; }
-          .modal-grid     { grid-template-columns: 1fr 1fr; }
+        /* Mobile fixes */
+        @media (max-width: 768px) {
+          .settings-layout    { flex-direction: column !important; }
+          .settings-sidebar   { width: 100% !important; position: static !important; display: flex !important; flex-direction: row !important; overflow-x: auto !important; gap: 4px !important; padding: 8px !important; border-radius: 16px !important; }
+          .settings-sidebar button { flex-shrink: 0 !important; white-space: nowrap !important; min-width: fit-content !important; }
+          .settings-content   { padding: 12px 0 !important; width: 100% !important; max-width: 100% !important; }
+          .ai-panel-layout    { display: flex !important; flex-direction: column !important; height: auto !important; }
+          .ai-config-panel    { max-height: 50vh; overflow-y: auto; }
+          .ai-chat-panel      { height: 55vh !important; min-height: 320px; }
+          .table-wrapper      { overflow-x: auto !important; -webkit-overflow-scrolling: touch; }
+          .table-wrapper table { min-width: 560px; }
+          .fab-btn            { bottom: 74px !important; right: 14px !important; width: 52px !important; height: 52px !important; }
+          .modal-wrap         { padding: 0 !important; align-items: flex-end !important; }
+          .modal-inner        { border-radius: 24px 24px 0 0 !important; max-width: 100% !important; width: 100% !important; }
+          .modal-grid         { grid-template-columns: 1fr !important; }
+          header              { height: auto !important; min-height: 56px !important; padding: 10px 14px !important; }
+          /* KPI cards: prevent overflow, ensure gauge fits */
+          .kpi-card-inner     { flex-wrap: wrap !important; gap: 4px !important; }
+          .kpi-gauge          { flex-shrink: 0 !important; }
+          /* Notifications/Security toggles never get cut off */
+          .toggle-row         { flex-wrap: nowrap !important; gap: 12px !important; }
+          .toggle-row .toggle-info { flex: 1 1 0 !important; min-width: 0 !important; }
         }
-
-        /* ── DESKTOP (≥768px) ────────────────────────── */
-        @media (min-width: 768px) {
-          .desktop-sidebar { display: flex; }
-          .mobile-nav      { display: none; }
-          .main-content    { padding-left: 80px; }
-          .page-pad        { padding: 24px 28px 24px; gap: 20px; }
-          .kpi-grid        { grid-template-columns: repeat(5, 1fr); gap: 14px; }
-          .kpi-val         { font-size: 1.4rem; }
-          .charts-grid     { grid-template-columns: 2fr 1fr; gap: 20px; }
-          .bottom-grid     { grid-template-columns: 1fr 2fr 1fr; gap: 20px; }
-          .ai-panel-layout { flex-direction: row; min-height: 560px; }
-          .ai-config-panel { width: 300px; flex-shrink: 0; }
-          .ai-chat-panel   { height: auto; flex: 1; }
-          .settings-layout { flex-direction: row; gap: 20px; }
-          .settings-sidebar{ flex-direction: column; width: 200px; overflow-x: visible; position: sticky; top: 70px; align-self: flex-start; }
-          .settings-content{ max-width: 640px; }
-          .modal-wrap      { align-items: center; padding: 20px; }
-          .modal-inner     { border-radius: 24px; max-width: 880px; max-height: 88vh; }
-          .fab-btn         { bottom: 28px; right: 28px; width: 60px; height: 60px; }
-          .chart-wrap      { height: 260px; }
-        }
-
-        /* ── WIDE (≥1200px) ──────────────────────────── */
-        @media (min-width: 1200px) {
-          .bottom-grid   { grid-template-columns: 1fr 3fr 1fr; }
-          .playbook-grid { grid-template-columns: 1fr 1fr 1fr; }
+        @media (max-width: 480px) {
+          .kpi-grid   { grid-template-columns: 1fr 1fr !important; }
+          .chart-wrap { height: 200px !important; }
+          /* Smaller font on KPI values */
+          .kpi-val    { font-size: 1.1rem !important; }
         }
       `}</style>
 
@@ -556,12 +367,12 @@ const TradingTerminal = () => {
         {/* Neural ambient bg */}
         <div className="fixed inset-0 pointer-events-none" style={{ background: `radial-gradient(600px circle at ${mousePos.x}% ${mousePos.y}%, ${brand}15, transparent 80%)`, zIndex: 0 }} />
 
-        <div style={{ position: 'relative', display: 'flex', minHeight: '100vh', width: '100%', zIndex: 1 }}>
+        <div className="relative flex min-h-screen w-full" style={{ zIndex: 1 }}>
 
           {/* ── SIDEBAR (desktop) ─────────────────────────────────────────────── */}
           <aside onMouseEnter={() => setIsSidebarExpanded(true)} onMouseLeave={() => setIsSidebarExpanded(false)}
-            style={{ backgroundColor: tk.bg, borderColor: tk.border, borderRightWidth: 1, borderRightStyle: 'solid', width: isSidebarExpanded ? 220 : 72 }}
-            className="desktop-sidebar">
+            style={{ backgroundColor: tk.bg, borderColor: tk.border }}
+            className={`hidden md:flex flex-col border-r transition-all duration-500 z-50 fixed left-0 h-full ${isSidebarExpanded ? 'w-64' : 'w-20'}`}>
             <div className="flex flex-col h-full py-8 px-4">
               <div className="flex items-center gap-3 mb-12 overflow-hidden px-2">
                 <div className="min-w-[40px] h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: brand }}>
@@ -593,7 +404,7 @@ const TradingTerminal = () => {
           </aside>
 
           {/* ── MOBILE BOTTOM NAV ─────────────────────────────────────────────── */}
-          <nav style={{ backgroundColor: tk.bg, borderColor: tk.border, borderTopWidth: 1, borderTopStyle: 'solid' }} className="mobile-nav">
+          <nav style={{ backgroundColor: tk.bg, borderColor: tk.border }} className="flex md:hidden fixed bottom-0 left-0 w-full border-t z-[100] px-2 py-2 justify-around items-center">
             {[
               { id: 'DASHBOARD', icon: <LayoutDashboard size={20}/> },
               { id: 'SYLLEDGE',  icon: <Brain size={20}/> },
@@ -608,27 +419,28 @@ const TradingTerminal = () => {
           </nav>
 
           {/* ── MAIN CONTENT ──────────────────────────────────────────────────── */}
-          <main className="main-content">
-            <div className="page-pad">
+          <main className="flex-1 min-h-screen pl-0 md:pl-20 transition-all duration-500">
+            <div className="p-4 md:p-8 pb-28 md:pb-10 max-w-[1600px] mx-auto space-y-6">
 
               {/* Header — no New Position button here */}
-              <header style={{ borderColor: tk.border, backgroundColor: tk.bg + 'dd', borderBottomWidth: 1, borderBottomStyle: 'solid', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 16px', backdropFilter: 'blur(16px)', position: 'sticky', top: 0, zIndex: 20, gap: 10 }}>
+              <header style={{ borderColor: tk.border, backgroundColor: tk.bg + 'dd' }}
+                className="border-b flex items-center justify-between px-4 md:px-6 py-3 backdrop-blur-md sticky top-0 z-20 gap-3">
                 <div className="flex items-center gap-4 min-w-0">
                   <div>
                     <div className="flex items-center gap-1.5">
                       <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                      <p style={{ color: tk.textDim }} style={{ fontSize: 8, fontWeight: 900, textTransform: "uppercase", letterSpacing: "0.2em", color: "inherit", display: "none" }} className="">Neural Node Linked</p>
+                      <p style={{ color: tk.textDim }} className="text-[8px] font-black uppercase tracking-widest hidden sm:block">Neural Node Linked</p>
                     </div>
                     <h2 style={{ color: tk.text }} className="text-xs font-black uppercase tracking-widest italic">{activeTab.replace('_', ' ')}</h2>
                   </div>
                   <button onClick={() => setIsPrivacyMode(p => !p)}
                     style={{ borderColor: isPrivacyMode ? brand : tk.border, color: isPrivacyMode ? brand : tk.textMuted }}
-                    className="">
+                    className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg border transition-all text-[8px] font-black uppercase">
                     {isPrivacyMode ? <EyeOff size={12}/> : <Eye size={12}/>} Ghost
                   </button>
                 </div>
                 <div className="flex items-center gap-3">
-                  <div style={{ background: tk.surface, borderColor: tk.border }} style={{ display: "none" }} className="">
+                  <div style={{ background: tk.surface, borderColor: tk.border }} className="hidden xl:flex items-center gap-2 px-3 py-2 rounded-xl border">
                     <p style={{ color: tk.textDim }} className="text-[7px] uppercase font-bold">Latency</p>
                     <p style={{ color: brand }} className="text-[10px] font-black">14ms</p>
                     <Activity size={12} style={{ color: brand }}/>
@@ -646,7 +458,7 @@ const TradingTerminal = () => {
                 <div className="space-y-6">
 
                   {/* KPI cards */}
-                  <div className="kpi-grid">
+                  <div className="kpi-grid grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3 md:gap-4">
                     {[
                       { label: 'Net P&L',      val: `$${parseFloat(stats.netPnL).toLocaleString()}`,   color: parseFloat(stats.netPnL) >= 0 ? '#10b981' : '#ef4444', sub: `${stats.totalTrades} trades` },
                       { label: 'Trade Win %',  val: `${stats.winRate}%`,   gauge: { v: parseFloat(stats.winRate),                                        c: '#10b981' }, sub: null },
@@ -654,11 +466,11 @@ const TradingTerminal = () => {
                       { label: 'Day Win %',    val: `${stats.winRate}%`,   gauge: { v: parseFloat(stats.winRate),                                        c: '#3b82f6' }, sub: null },
                       { label: 'Avg Win/Loss', val: `$${stats.avgWin}`,   winLoss: true },
                     ].map((c, i) => (
-                      <div key={i} style={{ background: tk.surface, borderColor: tk.border }} className="rounded-2xl border" style={{ padding: "12px", overflow: "hidden" }}>
+                      <div key={i} style={{ background: tk.surface, borderColor: tk.border }} className="p-3 md:p-5 rounded-2xl border hover:border-brand/30 transition-all overflow-hidden">
                         <p style={{ color: tk.textMuted }} className="text-[7px] font-black uppercase tracking-widest mb-2">{c.label}</p>
-                        <div className="kpi-card-inner">
+                        <div className="kpi-card-inner flex items-center justify-between gap-1">
                           <div className="min-w-0 flex-1">
-                            <p style={{ color: c.color || tk.text, filter: isPrivacyMode ? 'blur(8px)' : 'none' }} className="kpi-val">{c.val}</p>
+                            <p style={{ color: c.color || tk.text, filter: isPrivacyMode ? 'blur(8px)' : 'none' }} className="kpi-val text-lg md:text-2xl font-black italic tracking-tighter truncate">{c.val}</p>
                             {c.sub && <p style={{ color: tk.textDim }} className="text-[7px] font-bold uppercase mt-1">{c.sub}</p>}
                           </div>
                           {c.gauge && <div className="kpi-gauge flex-shrink-0"><GaugeChart value={c.gauge.v} color={c.gauge.c} size={52}/></div>}
@@ -677,26 +489,26 @@ const TradingTerminal = () => {
                   </div>
 
                   {/* Secondary KPIs */}
-                  <div className="secondary-grid">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                     {[
                       { label: 'Expectancy',     val: `$${stats.expectancy}`,   color: parseFloat(stats.expectancy) > 0 ? '#10b981' : '#ef4444', icon: <Target size={14}/> },
                       { label: 'Max Drawdown',   val: `$${stats.maxDrawdown}`,  color: '#ef4444', icon: <AlertTriangle size={14}/> },
                       { label: 'Best Day',       val: `+$${stats.bestDay}`,     color: '#10b981', icon: <Award size={14}/> },
                       { label: 'Streak',         val: `${stats.currentStreak > 0 ? '+' : ''}${stats.currentStreak} ${stats.currentStreak > 0 ? '🔥' : '❄️'}`, color: stats.currentStreak > 0 ? '#10b981' : '#ef4444', icon: <Activity size={14}/> },
                     ].map((c, i) => (
-                      <div key={i} style={{ background: tk.surface, borderColor: tk.border }} className="rounded-2xl border" style={{ padding: "12px", display: "flex", alignItems: "center", gap: 12 }}>
+                      <div key={i} style={{ background: tk.surface, borderColor: tk.border }} className="p-3 md:p-4 rounded-2xl border flex items-center gap-3">
                         <div style={{ backgroundColor: `${c.color}20`, color: c.color }} className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0">{c.icon}</div>
                         <div className="min-w-0">
                           <p style={{ color: tk.textDim }} className="text-[7px] font-bold uppercase tracking-widest">{c.label}</p>
-                          <p style={{ color: c.color, filter: isPrivacyMode ? 'blur(8px)' : 'none' }} className="" style={{ fontSize: "1.1rem", fontWeight: 900, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.val}</p>
+                          <p style={{ color: c.color, filter: isPrivacyMode ? 'blur(8px)' : 'none' }} className="text-base md:text-lg font-black truncate">{c.val}</p>
                         </div>
                       </div>
                     ))}
                   </div>
 
                   {/* Charts row */}
-                  <div className="charts-grid">
-                    <div style={{ background: tk.surface, borderColor: tk.border }} className="rounded-2xl border" style={{ padding: "16px" }}>
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
+                    <div style={{ background: tk.surface, borderColor: tk.border }} className="lg:col-span-2 rounded-2xl border p-4 md:p-6">
                       <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
                         <div>
                           <h3 style={{ color: tk.text }} className="text-[10px] font-black uppercase tracking-widest">Daily Net Cumulative P&L</h3>
@@ -730,7 +542,7 @@ const TradingTerminal = () => {
                       </div>
                     </div>
 
-                    <div style={{ background: tk.surface, borderColor: tk.border }} className="rounded-2xl border" style={{ padding: "16px" }}>
+                    <div style={{ background: tk.surface, borderColor: tk.border }} className="rounded-2xl border p-4 md:p-6">
                       <h3 style={{ color: tk.text }} className="text-[10px] font-black uppercase tracking-widest mb-4">Net Daily P&L</h3>
                       <div style={{ height: 260, filter: isPrivacyMode ? 'blur(12px)' : 'none' }}>
                         <ResponsiveContainer width="100%" height="100%">
@@ -748,8 +560,8 @@ const TradingTerminal = () => {
                   </div>
 
                   {/* Radar + Calendar + Weekly */}
-                  <div className="bottom-grid">
-                    <div style={{ background: tk.surface, borderColor: tk.border }} className="rounded-2xl border" style={{ padding: "16px" }}>
+                  <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 md:gap-6">
+                    <div style={{ background: tk.surface, borderColor: tk.border }} className="rounded-2xl border p-4 md:p-6">
                       <div className="flex items-center justify-between mb-2">
                         <h3 style={{ color: tk.text }} className="text-[10px] font-black uppercase tracking-widest">Neural Score</h3>
                         <span style={{ backgroundColor: `${brand}20`, color: brand }} className="px-2 py-0.5 rounded-full text-[7px] font-black">BETA</span>
@@ -766,7 +578,7 @@ const TradingTerminal = () => {
                       </p>
                     </div>
 
-                    <div style={{ background: tk.surface, borderColor: tk.border }} className="rounded-2xl border" style={{ padding: "16px" }}>
+                    <div style={{ background: tk.surface, borderColor: tk.border }} className="lg:col-span-2 rounded-2xl border p-4 md:p-6">
                       <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
                         <h3 style={{ color: tk.text }} className="text-[10px] font-black uppercase tracking-widest">Execution Matrix</h3>
                         <div style={{ background: tk.input, borderColor: tk.border }} className="flex items-center gap-2 px-3 py-1.5 rounded-xl border">
@@ -781,7 +593,7 @@ const TradingTerminal = () => {
                       <div className="grid grid-cols-7 gap-1">{renderCalendar()}</div>
                     </div>
 
-                    <div style={{ background: tk.surface, borderColor: tk.border }} className="rounded-2xl border" style={{ padding: "16px" }}>
+                    <div style={{ background: tk.surface, borderColor: tk.border }} className="rounded-2xl border p-4 md:p-6">
                       <h3 style={{ color: tk.text }} className="text-[10px] font-black uppercase tracking-widest mb-4">Weekly Summary</h3>
                       <div className="space-y-2">
                         {weeklyStats.map((w, i) => (
@@ -803,7 +615,7 @@ const TradingTerminal = () => {
 
                   {/* Recent trades */}
                   <div style={{ background: tk.surface, borderColor: tk.border }} className="rounded-2xl border overflow-hidden">
-                    <div style={{ borderColor: tk.border }} className="" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px", borderBottom: "1px solid" }}>
+                    <div style={{ borderColor: tk.border }} className="flex items-center justify-between p-4 md:p-5 border-b">
                       <h3 style={{ color: tk.text }} className="text-[10px] font-black uppercase tracking-widest">Recent Trades</h3>
                       <button onClick={() => setActiveTab('TRADE_LOG')} style={{ color: brand }} className="text-[8px] font-black uppercase hover:opacity-70 transition-all">View All →</button>
                     </div>
@@ -840,10 +652,10 @@ const TradingTerminal = () => {
                   ║  SYLLEDGE AI                                     ║
                   ╚══════════════════════════════════════════════════╝ */}
               {activeTab === 'SYLLEDGE' && (
-                <div className="ai-panel-layout" style={{ minHeight: 560 }}>
+                <div className="ai-panel-layout grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6" style={{ minHeight: 560 }}>
                   {/* Config panel */}
                   <div className="ai-config-panel space-y-4 overflow-y-auto">
-                    <div style={{ background: tk.surface, borderColor: tk.border }} className="rounded-2xl border" style={{ padding: "16px" }}>
+                    <div style={{ background: tk.surface, borderColor: tk.border }} className="rounded-2xl border p-4 md:p-5">
                       <div className="flex items-center gap-3 mb-4">
                         <div style={{ backgroundColor: `${brand}20`, color: brand }} className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"><Brain size={16}/></div>
                         <h3 style={{ color: tk.text }} className="text-[10px] font-black uppercase tracking-widest">Strategy Profile</h3>
@@ -880,7 +692,7 @@ const TradingTerminal = () => {
                   </div>
 
                   {/* Chat panel */}
-                  <div style={{ background: tk.surface, borderColor: tk.border }} className="ai-chat-panel rounded-2xl border" style={{ overflow: "hidden" }}>
+                  <div style={{ background: tk.surface, borderColor: tk.border }} className="ai-chat-panel lg:col-span-2 rounded-2xl border flex flex-col overflow-hidden">
                     <div style={{ borderColor: tk.border, background: tk.input }} className="p-4 border-b flex items-center gap-3">
                       <div style={{ backgroundColor: brand }} className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"><Sparkles size={16} className="text-white"/></div>
                       <div>
@@ -924,9 +736,9 @@ const TradingTerminal = () => {
                   ║  AI BACKTEST                                     ║
                   ╚══════════════════════════════════════════════════╝ */}
               {activeTab === 'BACKTEST' && (
-                <div className="ai-panel-layout" style={{ minHeight: 560 }}>
+                <div className="ai-panel-layout grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6" style={{ minHeight: 560 }}>
                   <div className="ai-config-panel space-y-4 overflow-y-auto">
-                    <div style={{ background: tk.surface, borderColor: tk.border }} className="rounded-2xl border" style={{ padding: "16px" }}>
+                    <div style={{ background: tk.surface, borderColor: tk.border }} className="rounded-2xl border p-4 md:p-5">
                       <div className="flex items-center gap-3 mb-4">
                         <div style={{ backgroundColor: 'rgba(59,130,246,0.2)', color: '#3b82f6' }} className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"><Cpu size={16}/></div>
                         <h3 style={{ color: tk.text }} className="text-[10px] font-black uppercase tracking-widest">Backtest Config</h3>
@@ -974,7 +786,7 @@ const TradingTerminal = () => {
                     </div>
                   </div>
 
-                  <div style={{ background: tk.surface, borderColor: tk.border }} className="ai-chat-panel rounded-2xl border" style={{ overflow: "hidden" }}>
+                  <div style={{ background: tk.surface, borderColor: tk.border }} className="ai-chat-panel lg:col-span-2 rounded-2xl border flex flex-col overflow-hidden">
                     <div style={{ borderColor: tk.border, background: tk.input }} className="p-4 border-b flex items-center gap-3">
                       <div className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#3b82f6' }}><Cpu size={16} className="text-white"/></div>
                       <div>
@@ -1016,7 +828,7 @@ const TradingTerminal = () => {
                 <div className="space-y-6">
                   <div className="flex items-center justify-between flex-wrap gap-3">
                     <div>
-                      <h2 style={{ color: tk.text }} className="" style={{ fontSize: "1.6rem", fontWeight: 900, fontStyle: "italic", letterSpacing: "-0.03em" }}>NEURAL PLAYBOOK</h2>
+                      <h2 style={{ color: tk.text }} className="text-2xl md:text-3xl font-black italic tracking-tighter">NEURAL PLAYBOOK</h2>
                       <p style={{ color: tk.textDim }} className="text-[8px] font-bold uppercase tracking-[0.3em] mt-1">Strategy Library</p>
                     </div>
                     <button onClick={() => setIsCreatingStrategy(true)} style={{ backgroundColor: brand }} className="px-4 py-2.5 text-[9px] font-black uppercase tracking-widest rounded-xl text-white hover:opacity-90 transition-all flex items-center gap-2">
@@ -1033,7 +845,7 @@ const TradingTerminal = () => {
                       </div>
 
                       {/* Basic info */}
-                      <div className="" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 12 }}>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <input placeholder="Strategy Name" value={newStrategy.name} onChange={e => setNewStrategy(s => ({ ...s, name: e.target.value }))}
                           style={{ background: tk.input, borderColor: tk.border, color: tk.text }} className="rounded-xl border p-3 text-sm font-bold outline-none focus:border-brand transition-all"/>
                         <select value={newStrategy.timeframe} onChange={e => setNewStrategy(s => ({ ...s, timeframe: e.target.value }))}
@@ -1118,7 +930,7 @@ const TradingTerminal = () => {
                   )}
 
                   {/* ── STRATEGY CARDS ── */}
-                  <div className="playbook-grid">
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                     {playbook.map(strat => {
                       const dirView = playbookViewDir[strat.id] || 'BUY';
                       // Handle old format (array) or new format (object)
@@ -1213,7 +1025,7 @@ const TradingTerminal = () => {
                 <div className="space-y-5">
                   <div className="flex items-center justify-between flex-wrap gap-3">
                     <div>
-                      <h2 style={{ color: tk.text }} className="" style={{ fontSize: "1.6rem", fontWeight: 900, fontStyle: "italic", letterSpacing: "-0.03em" }}>TRADE LOG</h2>
+                      <h2 style={{ color: tk.text }} className="text-2xl md:text-3xl font-black italic tracking-tighter">TRADE LOG</h2>
                       <p style={{ color: tk.textDim }} className="text-[8px] font-bold uppercase tracking-[0.3em]">Execution Data</p>
                     </div>
                     <div className="flex gap-2">
@@ -1225,26 +1037,9 @@ const TradingTerminal = () => {
                       </button>
                     </div>
                   </div>
-
-                  {/* Import status banner */}
-                  {/* Import status banner */}
-                  {importStatus && (
-                    <div style={{
-                      padding: '10px 16px',
-                      borderRadius: 12,
-                      backgroundColor: importStatus.startsWith('✅') ? '#10b98115' : importStatus.startsWith('❌') ? '#ef444415' : '#f59e0b15',
-                      border: `1px solid ${importStatus.startsWith('✅') ? '#10b98140' : importStatus.startsWith('❌') ? '#ef444440' : '#f59e0b40'}`,
-                      color: importStatus.startsWith('✅') ? '#10b981' : importStatus.startsWith('❌') ? '#ef4444' : '#f59e0b',
-                      fontSize: 11, fontWeight: 700,
-                    }}>
-                      {importStatus}
-                    </div>
-                  )}
-
-                  {/* Filter bar */}
                   <div style={{ background: tk.surface, borderColor: tk.border }} className="flex flex-wrap gap-4 p-3 rounded-2xl border items-center">
                     {[
-                      { label: 'Asset',     key: 'asset',     opts: ['ALL','XAUUSD','NAS100','GER40','UKOIL','UK100','ETHUSD','DE30','EURNZD'] },
+                      { label: 'Asset',     key: 'asset',     opts: ['ALL','XAUUSD','NAS100','GER40','UKOIL'] },
                       { label: 'Strategy',  key: 'strategy',  opts: ['ALL', ...playbook.map(s => s.name)] },
                       { label: 'Direction', key: 'direction', opts: ['ALL','LONG','SHORT'] },
                     ].map(f => (
@@ -1258,57 +1053,33 @@ const TradingTerminal = () => {
                     ))}
                   </div>
                   <div style={{ background: tk.surface, borderColor: tk.border }} className="rounded-2xl border overflow-hidden">
-                    <div className="table-wrapper" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-                      <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 760 }}>
+                    <div className="table-wrapper">
+                      <table className="w-full">
                         <thead>
-                          <tr style={{ background: tk.input }}>
-                            {['Date','Entry Time','Exit Time','Symbol','Dir','Vol','Entry $','Exit $','SL','TP','Gross P&L','Comm.','Net P&L','Duration','Session','Grade'].map(h => (
-                              <th key={h} style={{ padding: '10px 12px', textAlign: 'left', fontSize: 7, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.1em', color: tk.textDim, whiteSpace: 'nowrap', borderBottom: `1px solid ${tk.border}` }}>{h}</th>
+                          <tr style={{ background: tk.input, borderColor: tk.border }} className="border-b">
+                            {['Asset','Direction','Grade','Entry','Exit','P&L','Strategy','Date'].map(h => (
+                              <th key={h} style={{ color: tk.textDim }} className="px-4 py-3 text-left text-[7px] font-black uppercase tracking-widest">{h}</th>
                             ))}
                           </tr>
                         </thead>
                         <tbody>
                           {tradeHistory.length === 0
-                            ? <tr><td colSpan={16} style={{ color: tk.textDim, padding: '48px 16px', textAlign: 'center', fontSize: 9, fontWeight: 700, textTransform: 'uppercase' }}>No trades yet — import your MT5 .csv above</td></tr>
-                            : tradeHistory.slice(0, 200).map((t, i) => {
-                                const net = parseFloat(t.netPnL ?? t.pnl ?? 0);
-                                const gross = parseFloat(t.grossPnL ?? t.pnl ?? 0);
-                                return (
-                                  <tr key={i} style={{ borderBottom: `1px solid ${tk.border}` }}>
-                                    <td style={{ padding: '8px 12px', fontSize: 9, color: tk.textDim, whiteSpace: 'nowrap' }}>{t.date || '—'}</td>
-                                    <td style={{ padding: '8px 12px', fontSize: 8, color: tk.textMuted, whiteSpace: 'nowrap' }}>{t.entryTime ? t.entryTime.split(' ')[1] : '—'}</td>
-                                    <td style={{ padding: '8px 12px', fontSize: 8, color: tk.textDim, whiteSpace: 'nowrap' }}>{t.exitTime ? t.exitTime.split(' ')[1] : '—'}</td>
-                                    <td style={{ padding: '8px 12px', fontSize: 10, fontWeight: 900, color: tk.text }}>{t.symbol || t.asset || '—'}</td>
-                                    <td style={{ padding: '8px 12px' }}>
-                                      <span style={{ backgroundColor: t.direction === 'LONG' ? '#10b98120' : '#ef444420', color: t.direction === 'LONG' ? '#10b981' : '#ef4444', padding: '2px 8px', borderRadius: 999, fontSize: 7, fontWeight: 900 }}>{t.direction || '—'}</span>
-                                    </td>
-                                    <td style={{ padding: '8px 12px', fontSize: 9, color: tk.textMuted }}>{t.volume ?? '—'}</td>
-                                    <td style={{ padding: '8px 12px', fontSize: 9, color: tk.textMuted }}>{t.entryPrice || t.entry || '—'}</td>
-                                    <td style={{ padding: '8px 12px', fontSize: 9, color: tk.textMuted }}>{t.exitPrice || t.exit || '—'}</td>
-                                    <td style={{ padding: '8px 12px', fontSize: 9, color: '#ef444480' }}>{t.sl || '—'}</td>
-                                    <td style={{ padding: '8px 12px', fontSize: 9, color: '#10b98180' }}>{t.tp || '—'}</td>
-                                    <td style={{ padding: '8px 12px', fontSize: 9, color: tk.textMuted }}>{gross >= 0 ? '+' : ''}${gross.toFixed(2)}</td>
-                                    <td style={{ padding: '8px 12px', fontSize: 9, color: '#ef444480' }}>{t.commission ? `$${parseFloat(t.commission).toFixed(2)}` : '—'}</td>
-                                    <td style={{ padding: '8px 12px', fontSize: 10, fontWeight: 900, color: net >= 0 ? '#10b981' : '#ef4444', filter: isPrivacyMode ? 'blur(8px)' : 'none', whiteSpace: 'nowrap' }}>{net >= 0 ? '+' : ''}${net.toFixed(2)}</td>
-                                    <td style={{ padding: '8px 12px', fontSize: 8, color: tk.textDim }}>{t.duration || '—'}</td>
-                                    <td style={{ padding: '8px 12px', fontSize: 8, color: tk.textDim, whiteSpace: 'nowrap' }}>{t.session || '—'}</td>
-                                    <td style={{ padding: '8px 12px' }}>
-                                      {t.grade
-                                        ? <span style={{ backgroundColor: `${brand}20`, color: brand, padding: '2px 8px', borderRadius: 999, fontSize: 7, fontWeight: 900 }}>{t.grade}</span>
-                                        : <span style={{ fontSize: 8, color: tk.textDim }}>—</span>
-                                      }
-                                    </td>
-                                  </tr>
-                                );
-                              })}
+                            ? <tr><td colSpan={8} style={{ color: tk.textDim }} className="px-4 py-14 text-center text-[9px] font-bold uppercase">No trades logged yet.</td></tr>
+                            : tradeHistory.map((t, i) => (
+                              <tr key={i} style={{ borderColor: tk.border }} className="border-b last:border-0">
+                                <td style={{ color: tk.text }} className="px-4 py-3 text-[9px] font-black">{t.asset}</td>
+                                <td className="px-4 py-3"><span className={`px-2 py-0.5 rounded-full text-[7px] font-black ${t.direction === 'LONG' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'}`}>{t.direction}</span></td>
+                                <td className="px-4 py-3"><span style={{ backgroundColor: `${brand}20`, color: brand }} className="px-2 py-0.5 rounded-full text-[7px] font-black">{t.grade}</span></td>
+                                <td style={{ color: tk.textMuted }} className="px-4 py-3 text-[9px]">{t.entry}</td>
+                                <td style={{ color: tk.textMuted }} className="px-4 py-3 text-[9px]">{t.exit}</td>
+                                <td style={{ color: parseFloat(t.pnl) >= 0 ? '#10b981' : '#ef4444', filter: isPrivacyMode ? 'blur(8px)' : 'none' }} className="px-4 py-3 text-[9px] font-black">{parseFloat(t.pnl) >= 0 ? '+' : ''}${t.pnl}</td>
+                                <td style={{ color: tk.textMuted }} className="px-4 py-3 text-[9px]">{t.strategy}</td>
+                                <td style={{ color: tk.textDim }} className="px-4 py-3 text-[9px]">{t.date}</td>
+                              </tr>
+                            ))}
                         </tbody>
                       </table>
                     </div>
-                    {tradeHistory.length > 200 && (
-                      <div style={{ padding: '12px 16px', borderTop: `1px solid ${tk.border}`, fontSize: 9, color: tk.textDim, textAlign: 'center' }}>
-                        Showing first 200 of {tradeHistory.length} trades
-                      </div>
-                    )}
                   </div>
                 </div>
               )}
@@ -1353,7 +1124,7 @@ const TradingTerminal = () => {
                               <button style={{ color: brand }} className="text-[8px] font-black uppercase tracking-wider mt-1">Change Photo</button>
                             </div>
                           </div>
-                          <div className="" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 12 }}>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                             {[
                               { label: 'Display Name', k: 'name',        type: 'text' },
                               { label: 'Email',        k: 'email',       type: 'email' },
@@ -1533,7 +1304,7 @@ const TradingTerminal = () => {
 
         {/* ── TRADE MODAL ────────────────────────────────────────────────────── */}
         {isLogModalOpen && (
-          <div className="modal-wrap">
+          <div className="modal-wrap fixed inset-0 z-[100] flex items-center justify-center p-4 md:p-6">
             <div className="absolute inset-0 bg-black/85 backdrop-blur-2xl" onClick={() => setIsLogModalOpen(false)}/>
             <div style={{ backgroundColor: tk.bg, borderColor: tk.border }} className="modal-inner relative w-full max-w-5xl rounded-[28px] border overflow-hidden flex flex-col max-h-[94vh]">
               <div style={{ borderColor: tk.border, background: tk.surface }} className="p-5 border-b flex items-center justify-between">
@@ -1545,7 +1316,7 @@ const TradingTerminal = () => {
               </div>
 
               <div className="flex-1 overflow-y-auto p-5">
-                <div className="modal-grid">
+                <div className="modal-grid grid grid-cols-1 lg:grid-cols-2 gap-5">
 
                   {/* LEFT */}
                   <div className="space-y-4">
